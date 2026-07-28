@@ -1,0 +1,60 @@
+---
+title: "Reference"
+description: "The mechanisms an implementer has to get exactly right"
+icon: "book"
+---
+
+This tab is for the person **wiring something up**. It carries the mechanisms in enough detail to
+implement them, and it stops there.
+
+<Note>
+  **Reference says *how*. Engineering says *why*.**
+
+  Where a mechanism exists because of a decision — and most of these do — the reference page states
+  the mechanism and links to the decision record rather than restating the argument.
+</Note>
+
+## What is here
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="id-card" href="/reference/authentication">
+    Verified in-process against the identity provider's JWKS. Keyed on the **email claim**, never on
+    `sub`. Token lifecycle in the browser, and the projection rule that must fail closed.
+  </Card>
+  <Card title="Authorization" icon="lock" href="/reference/authorization">
+    Two sequential guards, three dimensions, three separately-granted global resources, and the list
+    endpoint that must not resolve through the enforcer.
+  </Card>
+  <Card title="Applying it" icon="pen-to-square" href="/reference/applying">
+    What you declare, what is derived for you, choosing the scope, and where to look when something is
+    denied.
+  </Card>
+  <Card title="Implementing it" icon="code" href="/reference/implementation">
+    A **real, in-production** `@RequirePermission` from a sibling estate — and the four places §11
+    deliberately differs from it, each with the reason.
+  </Card>
+</CardGroup>
+
+## The one sentence worth carrying out of this tab
+
+<Warning>
+  **The module guard is derived from the route. The resource permission is declared per operation.**
+
+  That asymmetry is the design: an annotation you can forget is a check that **fails open**, so the
+  guard most likely to be forgotten is taken out of human hands entirely.
+</Warning>
+
+## What this tab is not
+
+| Not here | Where |
+| --- | --- |
+| **Why** the policy is authored elsewhere | [The decision](/engineering/platform/authorization) |
+| The permission **catalogue** — which roles exist, who holds them | Not in this product at all. Authored in the estate's auth service |
+| A role or grant **editor** | There is none, and [its absence is correct](/engineering/platform/authorization) |
+| The HTTP surface | [API reference](/api) |
+
+<Note>
+  **Every page in this tab is a rendering of `ARCHITECTURE.md` §11 and never a source.** Where §11 does
+  not name a mechanism, these pages do not invent one — they state the obligation and leave the
+  implementation to the shared client package the platform is required to use.
+</Note>

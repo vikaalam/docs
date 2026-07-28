@@ -1,0 +1,166 @@
+---
+title: "The audit trail"
+description: "What is recorded, what a record contains, and why it cannot be edited"
+icon: "shield-check"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/audit.webp"
+  alt="Audit — the immutable activity record, queryable and exportable"
+  noZoom
+/>
+
+## What gets recorded
+
+**Every mutating change to this platform's own state**, and **every rejected attempt to make one**.
+
+<Warning>
+  **This is not the event log.** An external system's fact is not a change to our state and does not
+  belong here.
+
+  The audit trail answers *"who changed this workflow, approved this case, downloaded this
+  artifact"*. What arrived from a source system lives in the ingest history — a different store, with
+  different retention and a different purpose.
+</Warning>
+
+## What a record contains
+
+| Field | Contents |
+| --- | --- |
+| **Actor** | Type (`user` · `system` · `publisher` · `process`), reference, and display name. **Never null** — a system change says so explicitly |
+| **What was touched** | Module, resource type, resource id, action |
+| **Before / after** | Full snapshots, field-redacted by policy |
+| **Changed fields** | Which fields actually differed |
+| **Correlation** | Ties one interface click, the event it produced, and every downstream effect into one thread |
+| **Request context** | IP address and user agent, where the change came from a person's request; null otherwise |
+| **Outcome** | `applied` or **`rejected`** — a denied attempt is also a record |
+
+## Two things that make this trustworthy
+
+<AccordionGroup>
+  <Accordion title="It is written inside the business transaction" icon="lock">
+    The audit entry commits **with** the change it describes. If the audit write fails, the business
+    change **rolls back**.
+
+    An audit trail that is *sometimes* written is equivalent to none. The price of this guarantee is
+    that the audit component can never be moved into a separate service — accepted deliberately and
+    recorded as a decision, not discovered later.
+  </Accordion>
+  <Accordion title="A rejected attempt commits independently" icon="ban">
+    This is the second half, and without it the store is structurally incapable of doing the job it
+    exists for.
+
+    A denied permission or a four-eyes violation means something threw. The exception propagates, the
+    transaction rolls back — **and takes the audit entry with it**. The store built to prove a denial
+    occurred could never retain one.
+
+    So a `rejected` entry commits in **its own transaction**. That is safe precisely because there is
+    no business change for it to be atomic *with*.
+
+    One consequence, in the correct direction: a rejection can be recorded even when the request later
+    fails for an unrelated reason. **An over-recorded denial is a nuisance; an unrecorded one is a
+    hole.**
+  </Accordion>
+</AccordionGroup>
+
+## Why it cannot be edited
+
+Append-only is enforced by **database privilege**, not by discipline.
+
+The application's database role holds `INSERT` and `SELECT` on the audit table and nothing else.
+There is no code path that can update or delete an entry, because the privilege to do so does not
+exist for the running application.
+
+<Note>
+  A separate, more privileged credential exists solely for the scheduled retention job that drops
+  aged partitions — and that job is itself audited.
+</Note>
+
+## Resource history — the same record, from one object's view
+
+<img
+  src="/images/screens/resource-history.webp"
+  alt="Resource history — every change to one configuration object"
+  noZoom
+/>
+
+Every configuration screen embeds the history of the object you are looking at: who changed this
+workflow, this responsibility rule, this report definition — when, and what it looked like before.
+
+<Warning>
+  **A save counter is not an audit trail, and the interface says so where the two appear together.**
+
+  A version number counts saves that **committed**. An audit trail counts **attempts**, including the
+  ones that were refused. They will not match, and the one that matters for a control is the second.
+</Warning>
+
+## Exporting
+
+<img
+  src="/images/screens/audit-export.webp"
+  alt="Audit export — scope, columns, and an inline confirmation"
+  noZoom
+/>
+
+An export is a read, but it is a consequential one — so it is confirmed **inline**, on the same
+screen, rather than behind a second dialogue.
+
+<Note>
+  **Why inline and not a modal:** a dialogue stacked on a body that is already the confirmation trains
+  people to dismiss dialogues. The scope form *is* the confirmation.
+</Note>
+
+Three things about the export form are deliberate:
+
+<Steps>
+  <Step title="The columns are part of the form">
+    You choose which fields leave the system. Widening an export quietly is exactly the failure this
+    prevents.
+  </Step>
+  <Step title="The scope defaults are narrow">
+    Last seven days, any outcome, everything else unfiltered. A wide default is a wide export nobody
+    intended.
+  </Step>
+  <Step title="An export is itself audited">
+    Downloading the record is a change to nothing and an event worth knowing about. It produces an
+    entry with your name on it.
+  </Step>
+</Steps>
+
+<Warning>
+  **Open question, recorded rather than filled in:** the export form currently has **no reason
+  field**. Whether an export should require a stated purpose is a compliance decision, not an
+  engineering one, and it has not been taken.
+</Warning>
+
+## Who can read it
+
+Reading the audit trail is its own permission. It is not implied by access to the work the entries
+describe — a person who can complete compliance reviews does not automatically hold audit read.
+
+Exporting is a **separate** permission again, because an export leaves the system.
+
+## What is deliberately not in the audit trail
+
+| Not here | Where it is | Why |
+| --- | --- | --- |
+| Events received from source systems | The ingest history | They are not changes to our state |
+| A task's operational timeline | The task's own state changes | Different consumers, different retention, hot-path joins and SLA arithmetic |
+| Notification bodies | The notification driver | The platform sends data, not prose |
+| Business entity data | Nowhere — it is not owned here | Subjects are opaque references |
+
+<Note>
+  The task duplication is deliberate: the operational timeline needs joins and SLA arithmetic on hot
+  data, while the audit record is immutable and retained for years. **Different consumers, different
+  retention, different guarantees.**
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Reconstructing one decision" icon="timeline" href="/compliance/trace">
+    One correlation id, everything that followed, in order.
+  </Card>
+  <Card title="Integrity and holds" icon="fingerprint" href="/compliance/integrity-and-holds">
+    Tamper-evidence, and what a passing check does and does not prove.
+  </Card>
+</CardGroup>

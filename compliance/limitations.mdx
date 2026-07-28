@@ -1,0 +1,201 @@
+---
+title: "Honest limits"
+description: "What this platform does not prove, and what would be needed to close each gap"
+icon: "triangle-exclamation"
+---
+
+This page exists because a control environment built on an overstated capability is worse than one
+built on a known gap. Everything here is a real limitation, not a disclaimer.
+
+## It cannot ingest what was never said
+
+<Warning>
+  **This is the largest limitation, and it is not fixable inside this platform.**
+</Warning>
+
+Some occurrences in the source systems never become facts at all. Three measured examples:
+
+| Case | Why nothing arrives |
+| --- | --- |
+| A reportable regulatory group **over the statutory threshold** whose currency matches neither the crypto nor the fiat configured list | Dropped by a two-branch condition with **no else, no log, and no counter** |
+| A provider callback **rejected for a bad signature** | Rejected *before* anything is written — so not even the rejection has an id |
+| A balance check | Only runs **as a side effect** of the call succeeding |
+
+**32 such occurrences are itemised**, each with the specific change its source service needs. Those
+changes are **prerequisites**, not enhancements.
+
+<Note>
+  There is also one genuine *accepted-but-not-recorded* case: a provider holds a filing, the local
+  status write-back affects fewer rows than expected, and the next run **re-files those records**.
+</Note>
+
+## Two findings that live in a source service, not here
+
+Both surfaced while building the Operations screens against the measured event catalogue, and neither
+can be fixed inside this platform.
+
+<Warning>
+  **A four-eyes control that approves itself.** One auto-approval path in the source service records
+  **the creator and the approver as the same automated actor**.
+
+  It is gated only by a feature flag, and it is **silent** — nothing is emitted when it fires, so it
+  does not appear in any queue, any trace, or any report.
+
+  This is worse posture than the maker-checker gap this platform found and closed in its own design:
+  that one could be bypassed, this one bypasses itself in a running service and reports nothing.
+</Warning>
+
+<Warning>
+  **A funding destination can vanish with no durable record.** Account deletion is readiness tier C —
+  nothing is written and the identifier ceases to exist.
+
+  So a destination money could be sent to can disappear leaving nothing behind to audit.
+</Warning>
+
+Both are rendered on the Operations screen with a **warn** mark and an explainer, never a green tick.
+Closing either requires a change in the source service first.
+
+## It does not decide anything
+
+The platform routes work, records what happened, and holds the clock. **It does not make a compliance
+determination**, score a risk, or judge a transaction.
+
+Where a decision is automated, it is because a **vendor capability** produced a result — and the
+platform records which capability, when, and what it returned. It does not evaluate the result.
+
+## Tamper-evidence has a detection window
+
+<Warning>
+  Sealing is **periodic**, not per-row. A change made and reverted **inside one unsealed interval**
+  leaves the same evidence as no change at all.
+
+  Entries after the most recent seal are in the **unsealed tail** and are not yet protected.
+</Warning>
+
+A per-row hash chain was rejected because it serialises every concurrent write for a property the
+periodic seal already provides. That is a deliberate trade, and the window is its cost.
+
+## Revocation is eventually consistent
+
+Permission changes are authored in the central auth service and distributed here. A revocation takes
+a few seconds to take effect.
+
+For the three global resources — destinations, vendor credentials, publishers — **that window is a
+residual risk**, and the control for it is a short-lived token rather than a faster policy channel.
+
+## Configuration is not in git
+
+An operator with configuration permissions can change who is notified about a compliance failure,
+without a deploy and without a code review.
+
+The two mandatory mitigations — a **diffable configuration export** and the **audit trail with
+before/after diffs** — make it reviewable, but they are compensating controls, not prevention.
+
+<Note>
+  This is a deliberate trade for "a new reaction must not require a deploy". Both halves of it are
+  stated so the control environment can decide how to supervise the second half.
+</Note>
+
+## A link rendered to a person passes none of the egress controls
+
+<Warning>
+  The outbound-URL rules exist to stop **our server** fetching a hostile address — six controls, all
+  about outbound connections.
+
+  A link that arrives in an envelope and is rendered into a reviewer's task form is **never fetched by
+  us**, so none of the six apply — while being **more likely to be clicked than any URL in the
+  system**.
+
+  This is a **different victim**, not a weaker version of the same problem: the target is a compliance
+  officer's browser and their trust in our interface.
+</Warning>
+
+The ownership and storage are now decided — the link's host is verified against a named destination
+row **during ingest**, a failure makes the event `invalid`, and the verdict travels with the payload
+rather than being re-derived at render time. The task detail screen shows a provided link's
+**provenance** for the same reason.
+
+<Note>
+  **What the stored verdict buys is the re-check.** A link verified at ingest is a verdict about a
+  destination *as it was then*. When a destination is deleted or its host changes, the stored rows are
+  the query that finds every already-rendered link the change invalidates.
+</Note>
+
+## A hold scoped by correlation id is not found by a subject query
+
+The erasure interlock looks up legal holds **by subject**. A hold scoped to a case — which is scoped
+by correlation id — names no subject, so that query would not find it.
+
+Recorded as a defect to close, not designed around.
+
+## Retention numbers that nobody has chosen
+
+| Undecided | Consequence if guessed |
+| --- | --- |
+| Artifact retention duration | A regulatory answer given by engineering |
+| Ingest-history retention | It is also the **backfill horizon** for any report type declared later — shortening it shortens what can ever be reconstructed |
+| Field-level redaction for identity-verification responses | Identity documents retained under an unagreed policy |
+| Whether an audit export requires a stated reason | An export surface with no purpose limitation |
+
+<Note>
+  **A default retention that nobody chose is worse than a blank, because it looks decided.** These are
+  recorded as open questions on purpose.
+</Note>
+
+## Deadlines are relative, and statutes are not
+
+<Warning>
+  Timers are **relative durations anchored at step entry**. A statutory filing window is anchored to
+  an **external date** and counted in **business days in the regulator's jurisdiction**.
+
+  Nothing in the architecture owns a business-day calendar, and every module that computes a deadline
+  would need the same one.
+
+  A filing deadline computed in calendar days when the statute says business days is wrong in exactly
+  the direction that matters.
+</Warning>
+
+Both the calendar and the absolute-deadline anchor are recorded as open questions. Neither is solved.
+
+## One transaction mechanism is unproven
+
+The guarantee that an audit entry commits with the change it describes depends on a specific runtime
+wiring — an HTTP interceptor and an ORM subscriber sharing one transaction context.
+
+<Note>
+  **The concept is sound; the wiring must be proven with a spike before it is relied on.** It is
+  recorded as a decision with that caveat attached, rather than assumed to work.
+</Note>
+
+## It is not running
+
+There is no product code yet. What exists is a specification, a verified database schema, a
+machine-readable event contract, an API surface, a seeded event-type catalogue, the boundary CI
+gates, and 47 designed screens.
+
+<Warning>
+  Every screenshot on this site is a **design export**, not a photograph of software. Where a page
+  describes behaviour, it describes **specified** behaviour.
+</Warning>
+
+## Why this page exists
+
+The same discipline produced every finding on it: each use-case walkthrough is required to end with
+**what it could not settle**, and those gaps become findings rather than being filled with a
+plausible mechanism.
+
+Roughly **thirty findings** arrived that way, **three of them structural**. Two independent
+feasibility audits then found five more things that **could not have worked as written**.
+
+<Note>
+  **Recording the gap is the discipline. Inventing the mechanism is the expensive mistake.**
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Control map" icon="table-list" href="/compliance/control-map">
+    What is supported, what is a gap, and what is out of scope entirely.
+  </Card>
+  <Card title="Open questions" icon="circle-question" href="/engineering/open-questions">
+    The full engineering list, recorded rather than assumed.
+  </Card>
+</CardGroup>

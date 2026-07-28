@@ -1,0 +1,174 @@
+---
+title: "My tasks"
+description: "Your work, and only yours — as a list or as a board"
+icon: "list-check"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/ops-my-tasks.webp"
+  alt="Ops · My tasks — grouped by the workflow that created each task"
+  noZoom
+/>
+
+## What a task is
+
+One unit of human work with four things that a chat message never had:
+
+<CardGroup cols={2}>
+  <Card title="An owner" icon="user">
+    Resolved from **responsibility rules**, not from a channel name someone typed into application
+    code. If the rules resolve to nobody, that is a visible problem — not silence.
+  </Card>
+  <Card title="A deadline" icon="clock">
+    Breaching it **escalates**. It never expires quietly.
+  </Card>
+  <Card title="A form" icon="clipboard-list">
+    Configured per task type. A screening review and a payout approval ask different questions,
+    because they are different work.
+  </Card>
+  <Card title="A history" icon="clock-rotate-left">
+    Every assignment, comment and state change, with who and when.
+  </Card>
+</CardGroup>
+
+## Two things that look like bugs and are not
+
+<AccordionGroup>
+  <Accordion title="It is not called &quot;my&quot; anywhere on the screen" icon="user-slash">
+    Because **"me" cannot be resolved yet.** There is no person directory in the sample data, so the
+    default *assigned to me* filter cannot be applied.
+
+    Rather than fake it, the design **promotes ASSIGNED TO to a full column** and leaves assignees as
+    references. The honest version of a personal list is one that admits it is not personal yet.
+  </Accordion>
+  <Accordion title="Rows are grouped by the workflow that created them" icon="layer-group">
+    Not by domain, and not by due date.
+
+    **Task type, priority and due-in are properties of the workflow's configuration** — uniform inside
+    a group and **false at row level**.
+
+    Putting *high* on an individual row would be a claim about a task record that does not exist. So
+    they sit on the **group header**, where they are true.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Priority is drawn as an **ordinal bar and never a colour**, because priority is a **rank** — and a
+  rank encoded as a category loses its ordering.
+</Note>
+
+## Reading the list
+
+Each row carries the four things you need before opening anything — with the grouping caveat above
+in mind:
+
+| Column | Answers |
+| --- | --- |
+| **What** | The task type — what kind of decision this is |
+| **About** | The subject — which deposit, which customer, which destination |
+| **Due** | The deadline, and whether it has passed |
+| **Why** | The reason this task exists |
+
+<Note>
+  **`DUE` currently reads *no source* in its own column header**, and every cell shows a dash with no
+  deadline meter drawn. The screen also states in its footer that the specified due-date sort could
+  not run.
+
+  Three of five rows show a dash for state rather than *not started*, because **"created" and "not
+  started" are different claims** — and only one of them is supported.
+</Note>
+
+<Note>
+  **The "why" column is the change from today.**
+
+  Where four different automatic checks can fail, the task says **which one** failed and **with what
+  value**. In the audited starting condition, all four produced one identical message — and where a
+  threshold was breached, the triggering reason *was* computed, *was* persisted to the database, and
+  was then **omitted from the message**. The reviewer was told a review was needed and not why.
+</Note>
+
+## The board view
+
+<img
+  src="/images/screens/my-tasks-kanban.webp"
+  alt="My tasks as a Kanban board, grouped by workflow state"
+  noZoom
+/>
+
+The same tasks, grouped by workflow state instead of listed. It is a **view option, not a different
+screen** — same data, same deadlines, same permissions.
+
+Use the board when you care about *flow* (what is piling up in which state) and the list when you
+care about *order* (what is due next).
+
+## Opening one
+
+<img
+  src="/images/screens/task-detail.webp"
+  alt="Task detail — outcome form, evidence, provided links with provenance, and activity"
+  noZoom
+/>
+
+<Steps>
+  <Step title="Read the outcome form">
+    The decision you are being asked to make, as structured fields rather than free text. Structured
+    because the answer feeds a process, a report, or both — and prose cannot.
+  </Step>
+  <Step title="Check the evidence">
+    Documents the case gathered automatically, plus anything a colleague attached.
+  </Step>
+  <Step title="Follow the provided links — carefully">
+    Links that arrived with the original event are shown **with their provenance**. A link in an
+    envelope is the one URL a reviewer is trained to click, so the interface always says where it
+    came from rather than presenting it as the platform's own.
+  </Step>
+  <Step title="Decide, and record why">
+    Your outcome and your reason are both part of the record. The reason is not optional decoration —
+    a rejection with no reason is the exact failure the audit found in the starting condition.
+  </Step>
+</Steps>
+
+## What happens after you finish
+
+You will not see this, but it is worth knowing it is not magic.
+
+When a task reaches a final state, it **publishes an event** saying so. That event goes through the
+same pipeline as everything else and, if the task belonged to a case, advances that case.
+
+The practical consequence for you: **a task always works on its own.** Ad-hoc work that belongs to no
+case behaves identically, because `task` does not know that cases exist.
+
+## Deadlines and escalation
+
+| When | What happens |
+| --- | --- |
+| Reminder threshold | You are notified |
+| Deadline passes | The task is marked breached and **escalates** — a visible transition |
+| Assignee deactivated upstream | The person projection deactivates them, and the timer escalates to the fallback in the responsibility chain |
+| Hard deadline | The step expires, and the case records that it did |
+
+<Warning>
+  **A live contradiction is flagged rather than reconciled.**
+
+  Two recorded events carry one task-type name while the workflow that creates them now configures a
+  different one — a rename that reached the workflow configuration and **not** the recorded events.
+
+  Left visible on purpose: an event type is what a workflow matches on, so two names for one thing is
+  exactly how a configured reaction silently stops firing.
+</Warning>
+
+<Warning>
+  **Nothing here expires into silence.** Every one of those transitions produces a record and, where
+  configured, a notification. An SLA that quietly lapses is the failure this whole layer exists to
+  prevent.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Queues" icon="users" href="/operations/queues">
+    Where unclaimed work lives, and what a lead watches.
+  </Card>
+  <Card title="Cases" icon="diagram-project" href="/operations/cases">
+    When your task is one step of something longer.
+  </Card>
+</CardGroup>

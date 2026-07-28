@@ -1,0 +1,207 @@
+---
+title: "The event envelope"
+description: "The JSON Schema a publisher tests against — every field, and why each rule exists"
+icon: "envelope"
+mode: "wide"
+---
+
+**This is the one contract a publishing service actually needs.** It is the architecture's event
+contract made machine-readable — the prose remains authoritative, and this is what a validator runs.
+
+Both ingress doors accept **exactly** this shape. A behaviour on only one transport is a defect.
+
+<Card title="Download the schema" icon="download" href="/contracts/event-envelope.schema.json">
+  `contracts/event-envelope.schema.json` — JSON Schema draft 2020-12.
+</Card>
+
+## A valid envelope
+
+```json
+{
+  "eventId":       "0192f4c1-1f1a-7b3e-8e0f-6a1c9f0b2d33",
+  "eventType":     "customer.account.created",
+  "specVersion":   "1.0",
+  "occurredAt":    "2026-07-21T04:10:00.000Z",
+  "source":        "core-api",
+  "subject":       { "type": "customer", "ref": "CUS-10293" },
+  "actor":         { "type": "user", "ref": "u-441" },
+  "correlationId": "0192f4c1-1f1a-7b3e-8e0f-6a1c9f0b2d34",
+  "causationId":   null,
+  "depth":         0,
+  "data":          { "tier": "individual", "country": "ID", "channel": "mobile" }
+}
+```
+
+## Required
+
+Seven fields. `additionalProperties` is **false**.
+
+<AccordionGroup>
+  <Accordion title="eventId — uuid" icon="fingerprint">
+    **Required on both doors.**
+
+    Identifies the **occurrence**, never the resource: approve → reject → approve on one record is
+    **three events with one resource id**.
+
+    The audited estate had **0 of 139** sends carrying one, so no consumer could tell a redelivery
+    from a real second event.
+
+    <Warning>
+      **A publisher must pick one naming taxonomy before minting this.** Eleven call sites in the
+      measured service insert **two rows per fact** under two type values — so a dual-taxonomy
+      publisher mints **two ids for one occurrence**, and every idempotency guard passes.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="eventType — pattern-checked" icon="tag">
+    ```
+    ^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$
+    ```
+
+    `<domain>.<entity>.<past-tense-verb>`. Past tense is **enforcement, not decoration**:
+    `customer.account.created` is a fact; `customer.account.notify_compliance` is an instruction —
+    and an instruction in an envelope means the publisher decided something that belongs to the
+    platform.
+
+    <Note>
+      **The pattern cannot check tense. A reviewer must.** The schema says so in its own comment
+      rather than implying the regex is sufficient.
+    </Note>
+
+    The core ships **zero** business domains and **five** platform ones — `task`, `process`,
+    `integration`, `reporting`, `directory` — because the return path re-enters through the same
+    ingest.
+  </Accordion>
+
+  <Accordion title="specVersion — const 1.0" icon="hashtag">
+    **The envelope's version, not the publisher's.**
+  </Accordion>
+
+  <Accordion title="occurredAt — date-time" icon="clock">
+    When the thing **happened**, not when it was received.
+
+    Arrival time is the time the pipeline was healthy; **under backlog the two diverge by exactly the
+    interval where ordering matters.** Several audited sends computed the real instant one line above
+    the send and dropped it.
+
+    <Warning>
+      **RFC 3339 with an explicit offset.** A local timestamp with no zone is a defect an operator
+      working across time zones cannot absorb.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="source — non-empty string" icon="tower-broadcast">
+    The publishing system, e.g. `core-api`. **Free text, not validated against a table.**
+  </Accordion>
+
+  <Accordion title="subject — {type, ref}" icon="crosshairs">
+    **Structured, always both halves.**
+
+    Routing, the cycle guard and the audit trail all key on the pair. **Buried in `data` it cannot be
+    indexed, and the cycle guard silently degrades to type-only** — the exact failure the guard was
+    redesigned to avoid.
+
+    | Half | Rule |
+    | --- | --- |
+    | `type` | Must be a **registered** subject type, or the envelope is `invalid` |
+    | `ref` | **Opaque.** Never resolved against a local table — there is no customer table and no transaction table. Only its **shape** is checked, against the registered format |
+  </Accordion>
+
+  <Accordion title="correlationId — uuid" icon="link">
+    Ties one operator click, the event it produced, and **every downstream effect** into one thread.
+  </Accordion>
+</AccordionGroup>
+
+## Optional
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `actor` | object or **null** | Present when a **human** acted; null when the system did. Type is one of `user` · `system` · `publisher` · `process` |
+| `causationId` | uuid or null | The immediate cause. **Null only at the root** of a thread |
+| `depth` | integer ≥ 0 | Read at ingest and at emission, **nowhere else** |
+| `data` | object | The facts |
+
+<Note>
+  **Every audited rejection notice omitted both the rejecting reviewer and the reason** — though both
+  were persisted one line earlier. That is why `actor` exists as a first-class field rather than
+  something a publisher might put in `data`.
+</Note>
+
+## Two rules inside `data`
+
+<AccordionGroup>
+  <Accordion title="Facts, not references" icon="link-slash">
+    `{type, id}` requires the consumer to hold **the producer's database credential** and re-read a
+    row that may have changed — a coupling that outlives every refactor.
+
+    **Two independent codebases in the audit converged on exactly that.**
+  </Accordion>
+  <Accordion title="Money is a string" icon="calculator">
+    **JSON numbers are IEEE-754 doubles**, and the domain's amounts are high-precision decimals. This
+    is the rule that fails silently.
+
+    <Warning>
+      **Four production gates were measured where a float already decides whether an event fires at
+      all.**
+
+      Re-reading the column as a decimal string fixes the **payload** and **not the gate.** Those are
+      two separate changes, and a publisher that makes only the first has fixed the visible half.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+## Seven forbidden fields
+
+Rejected as `invalid`, **never silently ignored**.
+
+| Field | Why it is not the publisher's |
+| --- | --- |
+| `severity` | Channel policy decides, per category |
+| `recipients` | Who is told is answered by responsibility rules, **resolved at dispatch** |
+| `channel` | Channel policy decides, by category × severity |
+| `template` | Templates live in the notifier driver, and are not edited in this product in either direction |
+| `actions` | The **workflow** decides what happens. An envelope carrying actions is an instruction |
+| `assignee` | Task assignment is **resolved, not asserted** |
+| `priority` | A decision. Workflow priority is an integer owned by configuration; task priority is an enum owned by the task type. **Neither is the publisher's** |
+
+### The `not: {}` trick, and why it matters
+
+<Note>
+  The seven are declared explicitly with `"not": {}` rather than being left to
+  `additionalProperties: false`.
+
+  **The difference is the error message.** A generic *"additional properties are not allowed"* tells a
+  publisher they broke something. **A named field tells them which one.**
+</Note>
+
+<Warning>
+  This is not cosmetic. The ingest row originally had **no column for a rejection reason** — so on
+  the stream door, the reason reached nobody at all. It now carries a structured rejection with a
+  **code, a field, and a detail.**
+
+  **A team moving off hand-rolled sends fails first on these seven, and telling them which one is the
+  whole migration aid.**
+</Warning>
+
+## Validating before you publish
+
+Point any draft-2020-12 validator at the schema. The seven forbidden fields, the event-type pattern,
+the required set and `additionalProperties: false` are all machine-checkable.
+
+<Warning>
+  **Three things the schema cannot check, and a reviewer must:**
+
+  1. **Tense.** The pattern accepts `customer.account.create` as readily as `created`.
+  2. **Whether `data` carries facts or pointers.** `{type, id}` is a perfectly valid object.
+  3. **Whether an amount was lossy before it became a string.** `.toString()` on a value already
+     summed as a double produces a well-formed string containing a wrong number.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="The publishing guide" icon="tower-broadcast" href="/engineering/publishing/guide">
+    The outbox pattern, and the ten-step checklist this schema is step three of.
+  </Card>
+  <Card title="Publishing hazards" icon="triangle-exclamation" href="/engineering/publishing/hazards">
+    The four measured things the contract has to survive.
+  </Card>
+</CardGroup>

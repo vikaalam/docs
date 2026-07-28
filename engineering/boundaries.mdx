@@ -1,0 +1,205 @@
+---
+title: "Module boundaries"
+description: "Eight rules, and the CI gates that make them real"
+icon: "shield-halved"
+mode: "wide"
+---
+
+A module talks to another **only through its `client/`**: a public contract expressed as an
+`abstract class` used as a dependency-injection token. No module ever imports another's `internal/`.
+
+<Note>
+  **`abstract class`, not `interface`.** A TypeScript interface vanishes at runtime and cannot be a DI
+  token.
+</Note>
+
+## The canonical skeleton
+
+Every module has the same shape. The only part that varies is the set of directories under
+`internal/`, which is the module's own business and invisible from outside.
+
+```
+src/modules/<name>/
+├── client/                        THE CONTRACT. Depends on nothing.
+│   ├── <name>.client.ts             the abstract class used as a DI token
+│   ├── dto/                         command and result shapes, plain types
+│   └── index.ts                     the only legal import path for other modules
+├── internal/                      EVERYTHING ELSE. Invisible outside the module.
+│   ├── <capability-dir>/            one directory per internal concern (varies per module)
+│   ├── entities/                    ORM entities — schema <name> only
+│   ├── repositories/                data access. Never touches another schema
+│   ├── http/                        controllers, all under /api/v1/<name>
+│   └── <name>.service.ts            the implementation bound to the client token
+├── <name>.module.ts               exports the CLIENT TOKEN ONLY.
+│                                    Never a service, never a repository, never an entity.
+└── README.md                      one paragraph: what it owns, what it must never do
+
+migrations/<name>/                 per-module migrations, run as a deploy step
+test/modules/<name>/               tests. Also subject to the architecture check
+```
+
+## The eight rules
+
+<Steps>
+  <Step title="Cross-module access only through client/">
+    No exceptions, and no "just this once for performance".
+  </Step>
+  <Step title="client/ depends on nothing">
+    Not on its own `internal/`, not on the ORM, not on a framework.
+  </Step>
+  <Step title="No cross-module foreign keys">
+    Relations use bare UUIDs.
+  </Step>
+  <Step title="No cross-schema JOINs">
+    **A JOIN is a foreign key in disguise.**
+  </Step>
+  <Step title="No cross-module transactions">
+    A hand-off between modules is an **outbox row**, never a shared transaction.
+  </Step>
+  <Step title="A module owns its own tables">
+    Nothing else writes them.
+  </Step>
+  <Step title="common/ is only for what is genuinely cross-domain">
+    And **must not know any module exists**. This is the number-one decay path.
+  </Step>
+  <Step title="Outbound HTTP lives only in integration">
+    Nothing else may import an HTTP client.
+  </Step>
+</Steps>
+
+## The rules are CI gates, not conventions
+
+```js
+// .dependency-cruiser.js
+{ name: 'no-cross-module-internal', severity: 'error',
+  from: { path: '^src/modules/([^/]+)/' },
+  to:   { path: '^src/modules/([^/]+)/internal/', pathNot: '^src/modules/$1/' } },
+
+{ name: 'client-must-stay-pure', severity: 'error',
+  from: { path: '^src/modules/[^/]+/client/' },
+  to:   { path: '^src/modules/[^/]+/internal/' } },
+
+{ name: 'common-stays-generic', severity: 'error',
+  comment: 'common/ must not know any module exists. The number-one decay path.',
+  from: { path: '^src/common/' },
+  to:   { path: '^src/modules/' } },
+
+{ name: 'no-direct-infra-import', severity: 'error',
+  comment: 'No domain module may know Redis, the notifier, or the object store exist.',
+  from: { path: '^src/modules/' },
+  to:   { dependencyTypes: ['npm'],
+          path: '^(ioredis|redis|@novu/.*|resend|@aws-sdk/client-s3|minio)$' } },
+
+{ name: 'integration-is-the-only-door-out', severity: 'error',
+  comment: 'Outbound HTTP may only live in integration/internal/egress/. Scattered outbound '
+         + 'calls mean a scattered SSRF guard — and what is scattered is never reviewed.',
+  from: { path: '^src/', pathNot: '^src/modules/integration/internal/egress/' },
+  to:   { dependencyTypes: ['npm', 'core'],
+          path: '^(axios|undici|got|node-fetch|superagent|node:https?|https?)$' } },
+
+{ name: 'task-must-not-know-process', severity: 'error',
+  comment: 'The upward return path is an event, never a call. This rule is the cycle guard.',
+  from: { path: '^src/modules/task/' },
+  to:   { path: '^src/modules/process/' } },
+
+{ name: 'integration-must-not-know-callers', severity: 'error',
+  from: { path: '^src/modules/integration/' },
+  to:   { path: '^src/modules/(process|automation|task|reporting)/' } },
+```
+
+<Note>
+  **The rules are pattern-based**, so a new module is governed the moment it is created. A boundary
+  that has to be registered by hand is a boundary that will be forgotten.
+</Note>
+
+## Two things a module graph cannot see
+
+This is the part most often got wrong, and both halves guard the most consequential boundary in the
+platform.
+
+<AccordionGroup>
+  <Accordion title="fetch is a global — there is no import to inspect" icon="triangle-exclamation">
+    `fetch` has been a global since Node 18. No import means no dependency edge, which means **nothing
+    for a module-graph analyser to inspect**.
+
+    The egress rule is only complete with a lint rule alongside it:
+
+    ```js
+    'no-restricted-globals': ['error',
+      { name: 'fetch',          message: 'Outbound HTTP belongs in integration/internal/egress/.' },
+      { name: 'XMLHttpRequest', message: 'Outbound HTTP belongs in integration/internal/egress/.' },
+    ],
+    ```
+  </Accordion>
+  <Accordion title="http and https are core modules, not npm packages" icon="triangle-exclamation">
+    Note `dependencyTypes: ['npm', 'core']` in the egress rule above.
+
+    A rule filtering `['npm']` alone lets `import https from 'https'` straight through the gate
+    protecting the single outbound door.
+  </Accordion>
+</AccordionGroup>
+
+## Every rule must be proven to fail
+
+<Warning>
+  **A gate that has never rejected anything is not a gate; it is a config file.**
+</Warning>
+
+Each rule has a companion fixture the gate is **expected to reject**. And for the egress rule that
+means **three** fixtures, one per evasion:
+
+| Fixture | Evasion it proves is caught |
+| --- | --- |
+| An npm HTTP client | The obvious case |
+| A core-module import | `import https from 'https'` |
+| A bare `fetch` | The global with no import |
+
+<Note>
+  **A gate tested only against `axios` has never been tested.**
+</Note>
+
+Test directories are checked too — a test that reaches across a module boundary is a test that will
+break at extraction, which means it is already invalid.
+
+## What the boundaries buy: extraction
+
+A module becomes a service when it needs a different scaling profile, a different release cadence, or
+a different team.
+
+<Steps>
+  <Step title="Dump the schema">
+    `pg_dump --schema=<module>` into the new service's database. One schema per module is what makes
+    this a single command.
+  </Step>
+  <Step title="Move the module directory">
+    `client/` is **copied, not moved** — the caller still needs the contract.
+  </Step>
+  <Step title="Replace the local implementation with a remote adapter">
+    **The contract does not change.**
+  </Step>
+  <Step title="The outbox and stream subscriptions move with it">
+    They were never shared.
+  </Step>
+  <Step title="Remove the registry line">
+    That is the whole un-wiring.
+  </Step>
+</Steps>
+
+<Warning>
+  **If extraction forces a change in a calling module, a boundary rule was already broken.**
+
+  That is why every `client/` contract is written as though it were already remote: asynchronous,
+  explicit errors, no assumption of zero latency, idempotent for writes.
+</Warning>
+
+One module is deliberately **un-extractable**: `audit`, because its guarantee depends on writing
+inside the caller's transaction. That is a recorded trade, not an oversight.
+
+<CardGroup cols={2}>
+  <Card title="Platform capabilities" icon="plug" href="/engineering/capabilities">
+    Infrastructure as a contract with swappable drivers.
+  </Card>
+  <Card title="The data model" icon="database" href="/engineering/platform/data-model">
+    What holds true across schemas — where the cross-boundary defects hide.
+  </Card>
+</CardGroup>

@@ -1,0 +1,291 @@
+---
+title: "process"
+description: "The deliberation layer — versioned definitions, stateful resumable instances"
+icon: "diagram-project"
+mode: "wide"
+---
+
+> **The deliberation layer.** Versioned process definitions and stateful, resumable instances. The
+> only module that can answer *"where is this case, and why is it stuck?"*
+
+| | |
+| --- | --- |
+| Schema | `process` |
+| Layer | Deliberation |
+| Depends on | `task`, `integration`, `reporting`, `notification` — all via `client/` |
+| Depended on by | `automation` only, through `start_process` and `signal_process` |
+| Slice | **3 — Deliberation** |
+| Extraction trigger | The definition language outgrows its declared limits |
+
+## Why it is its own module
+
+An operational flow like customer onboarding is sequential, spans days, and has human steps in the
+middle. Three properties follow, and none belong in a stream consumer:
+
+<Steps>
+  <Step title="It has a position">
+    *"Waiting on compliance review, since Tuesday, breaching SLA in four hours."*
+  </Step>
+  <Step title="It must survive a restart">
+    A deploy in the middle of a case cannot lose the case.
+  </Step>
+  <Step title="It must be auditable against the rules in force when it started">
+    Not the rules in force today.
+  </Step>
+</Steps>
+
+<Note>
+  `automation` cannot hold any of that without becoming stateful, and `task` cannot hold it without
+  learning about steps that are not human — at which point `task` stops being usable for ad-hoc work.
+</Note>
+
+## Step kinds
+
+| Kind | Reaches | Notes |
+| --- | --- | --- |
+| **Automatic** | `integration` or `reporting` | Asks for a **logical capability**, never a vendor |
+| **Human** | `task` | Becomes a task with an owner, an SLA, and a form |
+| **Wait** | — | Waits on a signal, with a timer armed |
+| **Branch** | — | Routes on an earlier step's output |
+| **Parallel** | — | Several branches run concurrently and join |
+
+<Warning>
+  **This is not a BPMN engine.** Sequence, branch, parallel, wait, timer — nothing more.
+
+  Anything beyond that is a signal that the flow belongs in a dedicated engine, and the decision
+  should be taken deliberately rather than by accumulation.
+</Warning>
+
+## Instances are pinned to a version
+
+<img
+  src="/images/screens/process-definitions.webp"
+  alt="Process definitions — which flows exist and what is running on which version"
+  noZoom
+/>
+
+An instance is pinned to the definition version in force when it started. Old versions are **never
+deleted**.
+
+<Note>
+  **Why:** a regulated case must be auditable against the rules in force when it started. Mutable
+  definitions, or migrating live instances, were both rejected.
+
+  **Cost, accepted:** definition storage grows. Retention is a policy decision, not a code one.
+</Note>
+
+## Context is derived, not stored
+
+This is one of the fixes that came out of reading the schemas against each other.
+
+<Warning>
+  An earlier design stored a `context` JSON column on the instance. **Parallel branches performed
+  read-modify-write on that one column from separate transactions** — silently losing a branch's
+  result and leaving the join to evaluate incomplete data.
+</Warning>
+
+The fix: **context is derived from the steps' own outputs.**
+
+| Rejected alternative | Why |
+| --- | --- |
+| `SELECT … FOR UPDATE` on the instance row | Serialises the branches at the step designed to run them concurrently |
+
+<Note>
+  No column, no contention, no divergence. The step outputs already held the same data correctly;
+  `context` was a **denormalised copy** — a second representation waiting to disagree with the first.
+</Note>
+
+## Four eyes
+
+A step may exclude the actor of a **named prior step**.
+
+<Steps>
+  <Step title="It names a step, not a person and not a boolean">
+    The engine needs a person id to exclude, and no boolean says *which* prior step's actor that is.
+    In a chain of approvals it is not inferrable at all.
+  </Step>
+  <Step title="The reference is validated at publish time">
+    A control referencing a step that some branch **skips** would fire or not fire depending on which
+    way the case went — **the worst behaviour available for a control**.
+  </Step>
+</Steps>
+
+<Note>
+  **The maker was the one person step codes could not reach — closed 2026-07-28.**
+
+  Someone who created the item **before the case existed** is not a step actor; their identity arrives
+  as the triggering event's actor. So the first approval could be assigned to the person who
+  registered the thing being approved — the one control the audited source system implemented by hand.
+
+  The resolution is an explicit `excludeTriggerActor` flag that adds the trigger actor to **the same
+  exclusion set** the step codes populate. One set, one mechanism, same failure mode: an exclusion
+  that empties the queue escalates, **never a silent self-approval**. It **defaults to off**, so no
+  published definition changes meaning until someone edits it.
+
+  A boolean is admissible here for the one reason a bare "needs four eyes" boolean is rejected
+  elsewhere: **there is exactly one trigger actor per instance**, so it says nothing ambiguous.
+</Note>
+
+<Note>
+  **The other end of the same control**, closed a day earlier: a task type now carries an
+  `is_approval` marker.
+
+  An approval whose exclusion leaves **nobody eligible** is a compliance gap; an ordinary unassigned
+  task is a delayed one. They share a backend condition and **must not share a rendering** — and the
+  marker cannot be derived from the process step, because `task` must stay usable for work no process
+  created.
+</Note>
+
+## No rollback, no compensation engine
+
+<Note>
+  **Compensation after a human has been told something is fiction.**
+
+  Automatic reverse execution was rejected. Undo is modelled as an **explicit compensating step**,
+  visible in the case like any other step.
+</Note>
+
+## Timers
+
+| Timer | Fires |
+| --- | --- |
+| SLA reminder | Before the deadline |
+| SLA breach | At the deadline — escalation |
+| Hard deadline | The step expires, and the case records that it did |
+| Retry | For a failing automatic step |
+
+There is also a periodic guard for the pathological state: **waiting with no future timer**.
+
+<Warning>
+  A case waiting on something that will never arrive, with no armed timer, is invisible by
+  construction — it never fails, so nothing alerts. The guard exists because nothing else would find
+  it.
+</Warning>
+
+## The screens it owns
+
+<Tabs>
+  <Tab title="Cases">
+    <img src="/images/screens/cases.webp" alt="Cases — running instances, their step, and what each waits on" noZoom />
+  </Tab>
+  <Tab title="Case detail">
+    <img src="/images/screens/case-detail.webp" alt="Case detail — ordered steps, pinned version, armed timers, sub-tasks" noZoom />
+  </Tab>
+  <Tab title="Definitions">
+    <img src="/images/screens/process-definitions.webp" alt="Process definitions — which flows exist, and what runs on which version" noZoom />
+  </Tab>
+</Tabs>
+
+## Principal tables
+
+Generated from `migrations/process/001-init.sql` — never drawn by hand.
+
+```mermaid
+erDiagram
+    process_definitions {
+        uuid id PK
+        varchar code
+        varchar name
+        varchar domain
+        varchar description
+        boolean active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    process_definition_versions {
+        uuid id PK
+        uuid definition_id FK
+        int version
+        jsonb spec
+        timestamptz published_at
+        uuid published_by
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    process_instances {
+        uuid id PK
+        uuid definition_version_id
+        uuid definition_id
+        varchar subject_type
+        varchar subject_ref
+        varchar idempotency_key
+        varchar business_key
+        varchar status
+        more 9_further_columns
+    }
+    process_steps {
+        uuid id PK
+        uuid instance_id FK
+        varchar step_code
+        int seq
+        varchar kind
+        varchar status
+        jsonb input
+        jsonb output
+        more 10_further_columns
+    }
+    process_signals {
+        uuid id PK
+        uuid instance_id FK
+        uuid step_id FK
+        varchar signal_code
+        varchar signal_id
+        jsonb payload
+        timestamptz received_at
+        boolean applied
+        more 2_further_columns
+    }
+    process_timers {
+        uuid id PK
+        uuid instance_id FK
+        uuid step_id FK
+        timestamptz fires_at
+        varchar kind
+        timestamptz fired_at
+        timestamptz cancelled_at
+        timestamptz created_at
+        more 1_further_columns
+    }
+    outbox {
+        bigint id PK
+        uuid aggregate_id
+        varchar target
+        varchar operation
+        jsonb payload
+        varchar idempotency_key
+        uuid correlation_id
+        uuid causation_id
+        more 8_further_columns
+    }
+    process_definitions ||--o{ process_definition_versions : "definition_id"
+    process_instances ||--o{ process_steps : "instance_id"
+    process_instances ||--o{ process_signals : "instance_id"
+    process_steps ||--o{ process_signals : "step_id"
+    process_instances ||--o{ process_timers : "instance_id"
+    process_steps ||--o{ process_timers : "step_id"
+```
+
+<Warning>
+  **No relationship line leaves this schema, and that is the boundary rule rather than an omission.** The 6 lines above are real foreign keys inside `process`.
+
+  Bare cross-schema references — drawn nowhere, because the database does not enforce them: `task_id`, `invocation_id`, `report_run_id` — each an opaque uuid into another schema.
+</Warning>
+
+## The two open questions it carries
+
+<Warning>
+  **Absolute deadlines.** Timers are relative durations anchored at step entry. A statutory window is
+  anchored to an **external date**. This needs an instance-level deadline with an anchor, an offset,
+  and a calendar — and does not have one.
+
+  **A business-day calendar.** The tables live in `directory`; the semantics exist nowhere.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="task" icon="list-check" href="/engineering/modules/task">
+    Where every human step lands — and which must never know this module exists.
+  </Card>
+  <Card title="integration" icon="plug" href="/engineering/modules/integration">
+    Where every automatic step's vendor call goes.
+  </Card>
+</CardGroup>

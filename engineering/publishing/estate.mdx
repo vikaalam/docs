@@ -1,0 +1,151 @@
+---
+title: "The estate"
+description: "Which services can publish, which cannot, and what each one's constraint is"
+icon: "sitemap"
+mode: "wide"
+---
+
+Seven services were read in full. This page is the assessment: **who can publish, on which door, and
+what stands in the way.**
+
+<Note>
+  These services are **read-only** from the platform's point of view. Nothing in them has been changed
+  for this design, and integrating one is a separate, deliberate piece of work.
+
+  This is also the one place in the design where real service names belong — the core is
+  company-agnostic by rule; a publisher assessment is deployment-specific by purpose.
+</Note>
+
+## Who can publish
+
+| Service | Role | The publishing constraint |
+| --- | --- | --- |
+| **`coinut-admin-be`** | **Primary source** — owns party, virtual account, deposit, trade, treasury, regulatory filing | MySQL + a scheduler ✅. **No Redis dependency at all** → the HTTP door, unless one is added. Its outbox must be a **new table in its own database** |
+| **`coinut-partner-ramp-apis`** | Secondary — its send sites are almost entirely partner-API *failures*, all inside `catch` | The **only** service with a live Redis client and a working outbox-plus-cron pattern → **the only Redis Streams candidate today** |
+| **`graphql-server`** | Legacy source; a third of its sends are pointer payloads | knex + MySQL, no Redis, no scheduler framework. Already wraps the right write paths in a transaction — **the cheapest outbox in the estate** |
+| **`liquidity_provider_apis`** | Marginal — one send site | **Stateless, no database** → an outbox is impossible. **At-most-once HTTP only** |
+| **`tms-automation`** | **Not a publisher** | Read-only solver, no scheduler, database module environment-gated |
+| **`coinut-admin-fe`**, **`web-app-new`** | **Not publishers** | Single-page applications. Every operator action becomes an event **in a backend instead** |
+
+<Warning>
+  **The stateless service is the interesting case.** With no database, there is no transaction for an
+  outbox row to join — so durable-once publishing is **impossible** there, not merely inconvenient.
+
+  It gets the HTTP door with at-most-once semantics, and that limitation is stated rather than
+  papered over.
+</Warning>
+
+## The primary source, measured
+
+The largest publisher was read in full on **2026-07-27**.
+
+| Measured | Number |
+| --- | --- |
+| Send sites | **75** |
+| Carrying an occurrence id | **0** |
+| Carrying a real time of occurrence | 4 |
+| Carrying the acting person | 8 |
+| **Events it could publish** | **133** |
+| Comparable facts it persists and announces to nobody | **77** |
+
+### The 133, by stream
+
+| Stream | Entries | Carries |
+| --- | --- | --- |
+| `treasury:events` | 73 | Money movement — instructions, transfers, payments, trades, deposits, accounts, balances |
+| `compliance:events` | 34 | KYC, screening, review decisions, regulatory filing |
+| `customer:events` | 12 | A customer's own money and identity |
+| `platform:events` | 12 | Vendor webhooks, monitors, delivery — **the plumbing telling on itself** |
+| `admin:events` | 2 | Operator changes to reference data |
+
+### Readiness — the number that decides scope
+
+| Tier | Meaning | Count |
+| --- | --- | --- |
+| **A** | A natural or provider reference gives the occurrence id, and a **real recorded instant** gives the time. **Publishable as written** | **47** |
+| **B** | A durable fact, but the id must be minted and/or the time falls back to the write moment. Publishable — **the discipline is the publisher's** | **68** |
+| **C** | **The fact is not durable.** Nothing is written, or it lives in a local variable, or a catch swallows it | **18** |
+
+<Warning>
+  **Tier C is not a backlog item for this platform.** `workspace-ops` cannot ingest what was never
+  said. Each one needs a change in the source service first.
+</Warning>
+
+## Three quarters of the facts are invisible to a grep
+
+<Note>
+  The primary source has **75 send sites** and **133 publishable events** — plus **77 comparable facts
+  it persists and announces to nobody at all.**
+
+  Three of its five send paths are invisible to a naive search for a notification call. Counting send
+  sites and calling it the event surface **undercounts by roughly a factor of two.**
+</Note>
+
+## Two different units, reported as one number
+
+<Warning>
+  The estate-wide headline counts **send sites**. The per-service catalogue counts **logical events**.
+
+  Two different units reported as one number is where a per-service split drifts from the code. Use
+  either for orientation; **the code decides.**
+</Warning>
+
+## The numbers, and how to re-derive them
+
+| Measured | When | Result |
+| --- | --- | --- |
+| Full estate | Original audit | **139 send sites, 0 with an occurrence id** |
+| Full estate | 2026-07-22 | **145 send sites, 0 with an occurrence id.** Sub-figures drifted: time-of-occurrence 1 not 0; acting person ~8 not ~4; rendered strings ~⅓ at the call site not ~half; transports 10 not 7 |
+| Primary source only | 2026-07-27 | **75 send sites, 0 with an occurrence id** |
+
+<Note>
+  **The load-bearing figure has never moved.** The sub-figures have, and the corrections are carried
+  inline rather than quietly replacing the original.
+
+  **A checkable number that is wrong costs more than one never claimed.**
+</Note>
+
+## The finding that changed a recommendation
+
+<Note>
+  The same estate **already contained a correct event system** — typed events, a stable id, a delivery
+  state, a signature, bounded retry with backoff — used for outbound partner callbacks. **Nobody
+  described it as one.**
+
+  Two things were wrong with it rather than missing:
+
+  1. The producing service wrote rows **directly into the consuming service's database**, making the
+     pair inseparable.
+  2. Exhausting the retries notified no one.
+
+  **So the target pattern usually already exists somewhere in the estate.** Finding it and generalising
+  it is a better opening move than proposing a new one — and its replacement is therefore a
+  **deletion**, not a rebuild.
+</Note>
+
+## Where to start
+
+<Steps>
+  <Step title="Start with the service that already has the pattern">
+    The one with a live Redis client and a working outbox-plus-cron loop is the cheapest first
+    publisher, even though it is not the primary source.
+  </Step>
+  <Step title="Then the primary source, on the HTTP door">
+    47 tier-A events are publishable as written, and the HTTP door needs no new dependency.
+  </Step>
+  <Step title="Then the legacy service">
+    It already wraps the right write paths in a transaction — the cheapest outbox in the estate.
+  </Step>
+  <Step title="Leave tier C until its service changes">
+    And track each one as a change request against that service, not as a platform task.
+  </Step>
+</Steps>
+
+<CardGroup cols={2}>
+  <Card title="Publishing hazards" icon="triangle-exclamation" href="/engineering/publishing/hazards">
+    The four measured things the contract has to survive.
+  </Card>
+  <Card title="The publishing guide" icon="tower-broadcast" href="/engineering/publishing/guide">
+    The outbox pattern, and the checklist.
+  </Card>
+</CardGroup>

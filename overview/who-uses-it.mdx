@@ -1,0 +1,113 @@
+---
+title: "Who uses it"
+description: "Five personas, two audiences, and the fear each one has"
+icon: "users"
+---
+
+## The five personas
+
+| Persona | What they do | Where they live |
+| --- | --- | --- |
+| **Operator** — compliance or ops analyst | Does the human work: reviews, approvals, follow-ups | My tasks, Queues, Attention |
+| **Configurator** | Edits workflows, task types, responsibility rules, report definitions — all as data in the interface | The Configure screens |
+| **Publisher** — a source service | States facts. Publishes events | The two ingress doors |
+| **Auditor** / regulator-facing | Queries the immutable record; needs proof of filing | Audit, Trace, Report runs |
+| **Admin** | Manages destinations and vendor credentials — the sensitive global resources | Global settings |
+
+<Warning>
+  **Admin is not RBAC.** Roles, permissions and grants are authored in the estate's separate
+  `auth-service`. This platform *enforces* them and never authors them — there is no role editor and
+  there is deliberately no screen for one.
+</Warning>
+
+## Two audiences, one application
+
+The eight modules are a code boundary. The **users** separate differently, and designing for the
+module roster instead of for these two people is the fastest way to make the product unusable.
+
+<CardGroup cols={2}>
+  <Card title="Operator" icon="user-check">
+    **Asks:** "What do I have to do today, and where is this case?"
+
+    **Volume:** many per day, minutes each.
+
+    **Cares about:** speed, deadline visibility, not missing anything.
+
+    **Fears:** work arriving invisibly.
+  </Card>
+  <Card title="Configurator" icon="sliders">
+    **Asks:** "What happens when this event arrives, and who gets told?"
+
+    **Volume:** a few per week, careful each.
+
+    **Cares about:** consequence preview, reversibility, who else is affected.
+
+    **Fears:** changing something whose blast radius they cannot see.
+  </Card>
+</CardGroup>
+
+### The configurator's fear is the one the design spends most effort on
+
+Configuration lives in the database precisely so that a new reaction needs no deploy. The price is
+that **a workflow edit is as consequential as a deploy and has none of a deploy's review.**
+
+The design pays that price back in three places:
+
+<Steps>
+  <Step title="The consequence preview">
+    Fire nothing. See exactly which workflows would match, which actions would run, which would be
+    suppressed and why. Non-matches are **listed, never hidden**.
+  </Step>
+  <Step title="The simulator">
+    Fire a **real** event through the **real** transport — deliberately a separate screen, so that
+    "which button fires real traffic?" has exactly one answer. It requires typing the event type code
+    to confirm.
+  </Step>
+  <Step title="Audit history on every configuration panel">
+    Who changed this, when, and what it looked like before. Embedded on the detail panel of every
+    configurable thing, not filed away in a separate module.
+  </Step>
+</Steps>
+
+## Navigation is grouped by intent, not by module
+
+An operator completing a compliance review must never need to know their work was born in
+`automation`, routed through `process`, and materialised by `task`.
+
+```
+WORK          Attention · My tasks · Queues · Cases
+SIGNALS       Events · Workflows · Event types · Subject types · Record types
+              · Publishers · Streams
+CONFIGURE     Process definitions · Task types · Responsibility · People & teams
+              · Channels · Providers · Destinations · Report definitions
+RECORDS       Audit · Deliveries · Invocations · Report runs · Erasure
+```
+
+Screens are still **owned** by exactly one module — the ownership decides the API, the permission
+resource, and which document specifies the screen. The grouping is a presentation of the same set,
+not a second structure.
+
+<Note>
+  The risk this creates is named so it can be watched: **someone reads the sidebar as the
+  architecture.** The mitigation is that every screen document repeats its owning module in its
+  header, and a screen-to-module map is maintained as the authoritative inventory.
+</Note>
+
+## What each persona never has to do
+
+| Persona | Never has to |
+| --- | --- |
+| Operator | Know which module produced their work, or which vendor answered a step |
+| Configurator | Deploy anything to change a reaction, a recipient, or an SLA |
+| Publisher | Decide who to tell, on what channel, at what severity |
+| Auditor | Ask an engineer to reconstruct a timeline from logs |
+| Admin | Edit a URL in a free-text field — destinations are **named rows** |
+
+<CardGroup cols={2}>
+  <Card title="For operations" icon="list-check" href="/operations">
+    The operator's tab: your day, your queues, four worked scenarios.
+  </Card>
+  <Card title="For compliance" icon="scale-balanced" href="/compliance">
+    The auditor's tab: evidence, traceability, retention, and honest limits.
+  </Card>
+</CardGroup>

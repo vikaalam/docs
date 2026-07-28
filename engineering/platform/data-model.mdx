@@ -1,0 +1,370 @@
+---
+title: "The data model"
+description: "What holds true across schemas — where the defects nobody owns actually live"
+icon: "database"
+mode: "wide"
+---
+
+Each module specifies its own tables. This page is about what is true **across all of them** — and it
+exists because the cross-schema properties are the ones nobody owns.
+
+<Warning>
+  **The rule that generates this whole section:** every table sits in exactly one module schema, and
+  no module may read another's. So a property that must hold *across* schemas has **no home, no owner,
+  and no reviewer.**
+
+  Four such properties turned out to be **already broken**:
+
+  - The outbox was **five different shapes**
+  - `directory` published events with **no outbox at all**
+  - The per-subject encryption key had **no table anywhere**
+  - A partitioning defect had been fixed in two tables and **left in place in two more**
+
+  Cross-schema properties are specified centrally or they are specified nowhere.
+</Warning>
+
+## Nine schemas
+
+**No line between them is a foreign key.** Cross-schema references are bare identifiers carried in a
+column, resolved by a `client/` call or not resolved at all.
+
+```mermaid
+flowchart TD
+    subgraph cfg["Configuration — edited in the UI, versioned in the database"]
+        direction LR
+        DIRc["<b>directory</b><br/>persons · teams · team_members<br/>responsibility_rules · business_calendars"]
+        AUTc["<b>automation</b><br/>publishers · subject_types · event_types<br/>record_types · workflows · workflow_actions"]
+        PRCc["<b>process</b><br/>definitions · definition_versions"]
+        TSKc["<b>task</b><br/>task_types"]
+        NOTc["<b>notification</b><br/>channel_policies · payload_policies"]
+        ITGc["<b>integration</b><br/>providers · credentials<br/>capability_bindings · destinations"]
+        RPTc["<b>reporting</b><br/>definitions · definition_versions"]
+    end
+
+    subgraph run["Runtime — written by the platform, never edited by hand"]
+        direction LR
+        AUTr["ingested_events · event_keys<br/>action_executions · action_execution_keys<br/>records"]
+        PRCr["instances · steps · signals · timers"]
+        TSKr["tasks · state_changes<br/>comments · attachments"]
+        NOTr["deliveries · delivery_keys"]
+        ITGr["invocations · invocation_keys<br/>callbacks · verified_links"]
+        RPTr["report_facts · runs · submissions"]
+        DIRr["responsibility_assignments"]
+    end
+
+    subgraph plat["platform — owned by no module"]
+        PLT["artifacts · artifact_retentions<br/><b>subject_keys</b> · casbin_rule"]
+    end
+
+    AUD["<b>audit</b><br/>audit_entries · audit_seals<br/>retention_policies · legal_holds<br/><i>written by a capability, inside the caller's transaction</i>"]
+
+    AUTr -. "subject_type + subject_ref" .-> PRCr
+    AUTr -. "subject_type + subject_ref" .-> TSKr
+    AUTr -. "subject_type + subject_ref" .-> NOTr
+    PRCr -. "task_id · invocation_id · report_run_id — bare uuids" .-> TSKr
+    PRCr -. "" .-> ITGr
+    PRCr -. "" .-> RPTr
+    TSKr -. "artifact_id" .-> PLT
+    RPTr -. "artifact_id · invocation_id" .-> PLT
+    NOTr -. "subject_key_id" .-> PLT
+    ITGr -. "subject_key_id" .-> PLT
+    RPTr -. "subject_key_id" .-> PLT
+    AUD -. "subject_key_id" .-> PLT
+    DIRr -. "person_id" .-> DIRc
+
+    cfg -.-> AUD
+    run -.-> AUD
+```
+
+Three readings worth having:
+
+<Steps>
+  <Step title="Configuration and runtime are the same schema but not the same thing">
+    Configuration is edited, audited with a before/after diff, and exportable to a diffable file.
+    Runtime is written by the platform and never edited.
+
+    When a module is extracted, **both move together** — which is the point of one schema per module.
+  </Step>
+  <Step title="Every dotted line is a place a JOIN would have been">
+    Each is a bare identifier and a `client/` call, or nothing at all.
+  </Step>
+  <Step title="platform has no module">
+    It holds what more than one module needs and none may own: artifacts, encryption keys, and the
+    policy store. **Nothing in `platform` may reference a module schema** — the arrows all point
+    *into* it.
+  </Step>
+</Steps>
+
+## The nine schemas, drawn
+
+Every schema has its own diagram, generated from its migration by `gen-er-diagrams.py` — **never
+drawn by hand**, so none can disagree with the SQL that was applied to PostgreSQL.
+
+<CardGroup cols={4}>
+  <Card title="directory" icon="address-book" href="/engineering/modules/directory">9 tables · 4 FKs</Card>
+  <Card title="automation" icon="bolt" href="/engineering/modules/automation">13 tables · 2 FKs</Card>
+  <Card title="process" icon="diagram-project" href="/engineering/modules/process">7 tables · 6 FKs</Card>
+  <Card title="task" icon="list-check" href="/engineering/modules/task">6 tables · 3 FKs</Card>
+  <Card title="notification" icon="bell" href="/engineering/modules/notification">5 tables · 0 FKs</Card>
+  <Card title="integration" icon="plug" href="/engineering/modules/integration">9 tables · 5 FKs</Card>
+  <Card title="reporting" icon="file-invoice" href="/engineering/modules/reporting">6 tables · 3 FKs</Card>
+  <Card title="audit" icon="shield-check" href="/engineering/modules/audit">5 tables · 2 FKs</Card>
+</CardGroup>
+
+### platform — the ninth, owned by no module
+
+It has no module page because it has no module. It holds what more than one module needs and none may
+own.
+
+```mermaid
+erDiagram
+    artifacts {
+        uuid id PK
+        varchar kind
+        varchar content_type
+        bigint size_bytes
+        varchar storage_driver
+        varchar storage_key
+        varchar subject_type
+        varchar subject_ref
+        more 3_further_columns
+    }
+    artifact_retentions {
+        uuid artifact_id PK
+        varchar policy_code
+        timestamptz retain_until
+        int hold_count
+        timestamptz deleted_at
+        timestamptz created_at
+    }
+    subject_keys {
+        uuid id PK
+        varchar subject_type
+        varchar subject_ref
+        int key_version
+        bytea wrapped_key
+        varchar state
+        timestamptz created_at
+        timestamptz rotated_at
+        more 2_further_columns
+    }
+    casbin_rule {
+        uuid id PK
+        varchar ptype
+        varchar v0
+        varchar v1
+        varchar v2
+        varchar v3
+        varchar v4
+        varchar v5
+        more 1_further_columns
+    }
+    casbin_policy_version {
+        boolean singleton PK
+        bigint version
+        timestamptz changed_at
+        timestamptz created_at
+    }
+```
+
+<Note>
+  **Zero foreign keys, and every arrow in the schema map points *into* here.** Nothing in `platform`
+  may reference a module schema — so the tables that reference *it* (`subject_key_id`, `artifact_id`)
+  carry bare uuids from six other schemas, and none of them is drawn.
+</Note>
+
+<Warning>
+  **There is deliberately no diagram of all sixty-five tables, and there never will be.**
+
+  **No foreign key leaves a schema** — 25 in-schema keys across nine schemas, and not one crossing.
+  A single diagram would be nine disconnected islands, or somebody would join them by hand and draw
+  relationships **the database does not enforce and the boundary rules forbid**.
+
+  Bare cross-schema columns are named in a note under each diagram instead, so the reference stays
+  visible without being drawn as a relationship.
+</Warning>
+
+<Note>
+  **Two things no ER diagram can show you, and both are load-bearing.**
+
+  A relationship line means a **real foreign key**. `tasks.type_code` has no line to `task_types`
+  because it is a `varchar`; `task_attachments.artifact_id` has no line to `platform.artifacts` for
+  the same reason. Drawing either would assert a constraint that does not exist.
+
+  **Six tables are partitioned** — `ingested_events`, `action_executions`, `audit_entries`,
+  `invocations`, `deliveries`, `report_facts` — and a partitioned table **cannot carry a global unique
+  constraint**. Three schemas answer that with an unpartitioned `*_keys` sibling; `audit` answers it
+  with a composite primary key; `reporting` needs neither.
+</Note>
+
+## The columns every table carries
+
+| Column | Type | On | Rule |
+| --- | --- | --- | --- |
+| `id` | `uuid DEFAULT gen_random_uuid()` | every table except the two exceptions | Cross-module identity without foreign keys |
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY` | **every `outbox`** | The drain order within an aggregate is *id order*. A random UUID **has no order**, so "drain in id order" on a UUID key is not a rule, it is a coin toss |
+| `(id, <partition key>)` | composite | every partitioned table | PostgreSQL rejects the alternative |
+| `created_at` | `timestamptz NOT NULL DEFAULT now()` | every table | — |
+| `updated_at` | `timestamptz` | mutable tables only | **Absent on append-only tables, and its absence is the tell** |
+| `correlation_id` | `uuid NOT NULL` | every row on a causal path | Ties one click, the event it produced, and every downstream effect into one thread |
+| `causation_id` | `uuid NULL` | same | The immediate cause. Null only at the root |
+| `depth` | `int NOT NULL DEFAULT 0` | `ingested_events` and **every `outbox`** — *not* every causal-path row | See below |
+| `trace_id` | `varchar(32) NULL` | `ingested_events`, `audit_entries`, every `outbox` | On the outbox it travels as full trace context because it must be **propagated**; the stores need only the join key |
+| `subject_type` + `subject_ref` | `varchar NOT NULL` ×2 | every row concerning a business entity | **Always together, never apart** |
+
+### "Every row on a causal path" was checkable, and was not being met
+
+<Warning>
+  `notification.deliveries` carried **no correlation id at all**, so the last mile — the only part a
+  person actually experiences — fell out of the thread the audit trail promises.
+
+  A delivery that cannot be correlated cannot answer *"was anyone told about this case?"* without a
+  full-text search of a payload.
+</Warning>
+
+### Why `depth` is scoped narrower than its neighbours
+
+<Note>
+  The rule once said *"same"* — every causal-path row. **All six publishing modules independently
+  declined to implement it**, carrying correlation and causation on their rows while putting depth only
+  on the ingest row and the outboxes.
+
+  **Six schemas agreeing against one clause is evidence about the clause.** And they are right:
+  correlation answers *"what else belongs to this thread"* and is read from any row, whereas depth is
+  an input to exactly one decision — *does this emission continue a cycle* — taken at ingest and at
+  emission and nowhere else.
+
+  A depth column on tasks would be a value nothing reads: **a second representation waiting to
+  disagree with the first.**
+</Note>
+
+## Five cross-schema rules
+
+<AccordionGroup>
+  <Accordion title="One canonical outbox shape in every publishing module" icon="inbox">
+    The specification said *"one table shape per module schema"* and the modules defined **five**.
+
+    Consequences that were live: only one module's outbox carried depth and causation, so the loop
+    guard **did not apply** to three modules' traffic; `directory` published three events with **no
+    outbox at all**; and every module claimed to drain "in id order" over a random UUID key, which has
+    no order.
+
+    One shape, addressed by target and operation, keyed by `bigint IDENTITY`, carrying depth,
+    causation and trace context. **A stated exception to the UUID rule** — nothing outside the module
+    ever names an outbox row, so the UUID rule buys nothing there.
+  </Accordion>
+  <Accordion title="One crypto-shredding registry, one column name everywhere" icon="key">
+    Erasure was referenced by four tables under **three column names and two types** — with **no table
+    anywhere** holding a key, a version, or a destruction state.
+
+    A key per module was rejected: erasure would then be *N* operations that can partially fail, which
+    is not erasure. Deriving keys on the fly with no registry was rejected too: nothing then records
+    that a key was destroyed, so an erasure cannot be **proven**.
+
+    Result: erasure is one update on one row, refused under legal hold and audited. A partial unique
+    index makes "one active key per subject" a **database fact**.
+  </Accordion>
+  <Accordion title="A partitioned table never carries a global unique constraint" icon="table-columns">
+    Where one is required it lives in a sibling unpartitioned key table that also carries the guarded
+    row's id.
+
+    Applying this as a rule rather than a one-off found **two more tables already declaring
+    partitioning and a unique constraint at once** — migrations that would not have run.
+
+    A third interlock joins the two already recorded: **key-table retention must exceed the retention
+    of the table it guards**, or a retry becomes a duplicate effect.
+  </Accordion>
+  <Accordion title="One sanctioned cross-schema read, named so it is never cited as precedent" icon="eye">
+    A separate dead-letter table alongside a `dead_at` column on each module's outbox is **two
+    representations of one fact**.
+
+    But an operator needs **one screen**, and seven screens is how a dead letter goes unnoticed.
+
+    So the cross-module dead-letter queue is a **read-only `UNION` view**, granted to the operator role
+    and to no module's database role. It is the platform's only sanctioned cross-schema read, and it
+    is named as an exception.
+  </Accordion>
+  <Accordion title="Subject types are registered rows with a declared format" icon="fingerprint">
+    Not a text array on the event type.
+
+    The first real estate carries **three incompatible identifier regimes at once** — UUID keys,
+    auto-increment keys, rows carrying **both** with different consumers using different ones, two
+    composite primary keys, one identifier space shared by two entities, and a polymorphic reference
+    column already in production.
+
+    **A bare opaque string silently splits one subject type into two populations that never meet.**
+
+    Shape is validated at ingest and rejected as `invalid` with the expected form **named**; existence
+    is still never validated. Every subject index becomes two columns.
+  </Accordion>
+</AccordionGroup>
+
+## Authorization scope is a column, not a concept
+
+The permission model enforces a three-part permission whose third part **had no column to evaluate
+against**.
+
+```
+tasks.scopes              text[]   GIN
+process_instances.scopes  text[]   GIN
+deliveries.scopes         text[]   GIN
+report_facts.scopes       text[]   GIN
+```
+
+| Rule | Detail |
+| --- | --- |
+| Values are labels | `queue:compliance`, `partner:4711`, `entity:sg` |
+| **Derived once at creation** | Never edited. Re-derivation would silently change who can see historical work |
+| **An empty array means unscoped and visible** | The opposite reading hides every unscoped row from everyone while looking exactly like a permissions bug |
+
+Each of the four reads a **different** type column for the second half of the derivation, and that is
+named explicitly — left unstated, every screen re-invents the mapping and two of them disagree.
+
+<Warning>
+  **A scope selector naming a path no publisher sends derives nothing — and nothing is what it looks
+  like.** The row is then unscoped, visible to everyone holding the permission, with no error, no
+  failed row, and no marker anywhere.
+
+  A configuration defect whose only possible surface is a queue.
+</Warning>
+
+## Retention, per store
+
+| Store | Mechanism | Retention |
+| --- | --- | --- |
+| `automation.ingested_events` | Partition drop | Months — **and the backfill horizon for every fact type declared later** |
+| `automation.event_keys` | Batched delete | **Must exceed** the stream retention horizon |
+| `automation.records` | Per record type | Years where declared |
+| `automation.action_executions` | Partition drop | **Exactly the ingest history's** — it is the child of one, and a trace reads both |
+| `audit.audit_entries` | Partition drop, separate credential | Years; legal hold overrides |
+| `reporting.report_facts` | Append-only | Per report obligation |
+| `reporting.report_submissions` | — | Years. **The stored receipt, not the pointer, is the evidence** |
+| `notification.deliveries` | Partition drop | 18 months, deliberately shorter than audit |
+| `integration.invocations` | Partition drop | Short, deliberately shorter than audit |
+| `integration.verified_links` | Batched delete | Follows the ingest history — a verdict outliving the event it describes explains nothing |
+| `platform.artifacts` | Retain-until, **hold wins** | Per policy, up to years |
+| `platform.subject_keys` | Never deleted | The row outlives the data it protected; only the key material is destroyed |
+| every `outbox` | Batched delete where sent | Days. **Dead rows are never swept — they are a work queue** |
+
+## Postgres, not MySQL habits
+
+| Convention | Instead of |
+| --- | --- |
+| `varchar` + CHECK | Native enums |
+| `timestamptz` | `timestamp` |
+| `ILIKE` for search | `LIKE` — Postgres is case-sensitive, and a `LIKE` filter changes behaviour **silently** |
+| `pg` pool options | `mysql2` options, which are **ignored without error** |
+
+<Note>
+  The schema has been **verified by applying all nine schemas together to PostgreSQL** and checking
+  the conventions against the system catalogue — not by reading the SQL text.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Authorization" icon="lock" href="/engineering/platform/authorization">
+    How the scope column is actually evaluated.
+  </Card>
+  <Card title="Boundaries" icon="shield-halved" href="/engineering/boundaries">
+    The rules that make the no-JOIN constraint hold.
+  </Card>
+</CardGroup>

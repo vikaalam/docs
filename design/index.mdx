@@ -1,0 +1,133 @@
+---
+title: "The design"
+description: "Two audiences, one application, and a navigation model that hides the architecture"
+icon: "palette"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/dashboard.webp"
+  alt="A compliance landing screen in the current design language"
+  noZoom
+/>
+
+Every screen exists because a module owns a decision that a person has to make or inspect.
+
+<Note>
+  **Nothing in the design invents a concept.** If a status, a table or a state appears on a screen, it
+  is traceable to a row in a module specification.
+
+  Where the design adds something the architecture does not name — the Attention screen, the trace
+  panel, the signal path — it is **called out as a design decision with its reasoning**, not smuggled
+  in.
+</Note>
+
+## Two audiences, one application
+
+The eight modules are a code boundary. The **users** separate differently, and designing for the
+module roster instead of for these two people is the fastest way to make the product unusable.
+
+| | **Operator** | **Configurator** |
+| --- | --- | --- |
+| Asks | "What do I have to do today, and where is this case?" | "What happens when this event arrives, and who gets told?" |
+| Lives in | Attention, My tasks, Queues, Cases, task detail | Events, Workflows, Event types, process definitions, responsibility rules |
+| Volume | Many per day, minutes each | A few per week, careful each |
+| Cares about | Speed, deadline visibility, not missing anything | Consequence preview, reversibility, who else is affected |
+| **Fears** | **Work arriving invisibly** | **Changing something whose blast radius they cannot see** |
+
+Every screen states which audience it serves. A screen that serves both — the event detail panel is
+the main one — says so, and explains which half belongs to whom.
+
+### The configurator's fear gets the most effort
+
+Configuration lives in the database precisely so a new reaction needs no deploy. **The price is that a
+workflow edit is as consequential as a deploy and has none of a deploy's review.**
+
+The design pays that price back in three places:
+
+<CardGroup cols={3}>
+  <Card title="Consequence preview" icon="eye">
+    Nothing written, nothing published — and the pane header says so rather than leaving it to trust.
+    Non-matches are **listed, never hidden**.
+  </Card>
+  <Card title="The simulator" icon="play">
+    Fires a **real** event through the **real** transport. Deliberately a separate screen with
+    type-to-confirm, so "which button fires real traffic?" has exactly one answer.
+  </Card>
+  <Card title="Embedded audit history" icon="clock-rotate-left">
+    On every configuration detail panel. Not filed away in a separate module.
+  </Card>
+</CardGroup>
+
+## Navigation is grouped by intent, not by module
+
+<Warning>
+  **This is the single most consequential design decision, so it is stated first.**
+
+  An operator completing a compliance review must never need to know their work was born in
+  `automation`, routed through `process`, and materialised by `task`.
+</Warning>
+
+```
+WORK          Attention · My tasks · Queues · Cases
+SIGNALS       Events · Workflows · Event types · Subject types · Record types
+              · Publishers · Streams
+CONFIGURE     Process definitions · Task types · Responsibility · People & teams
+              · Channels · Providers · Destinations · Report definitions
+RECORDS       Audit · Deliveries · Invocations · Report runs · Erasure
+```
+
+Screens are still **owned** by exactly one module — the ownership decides the API, the permission
+resource, and which document specifies the screen. **The grouping is a presentation of the same set,
+not a second structure.**
+
+<Note>
+  **The risk this creates is named so it can be watched:** someone reads the sidebar as the
+  architecture.
+
+  The mitigation is a maintained screen-to-module map, and every screen document repeating its owning
+  module in its header.
+</Note>
+
+## The stack, and why it does not matter here
+
+**Vue 3 + Vite SPA, shadcn-vue + Tailwind.** Desktop-first.
+
+<Note>
+  **Nothing in the design depends on the framework** — which is the point, and it is why the frontend
+  decision reversing twice (Next.js → React → Vue) **changed no screen document at all.**
+</Note>
+
+Two things follow from *SPA* rather than from the framework, and only two:
+
+- **There is no server-rendered screen**, so every loading state is a client fetch and must be
+  designed as one.
+- **There is no web port** — the bundle is static assets served by the API role or a CDN.
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="The design language" icon="swatchbook" href="/design/design-system">
+    Tokens, typography, density, and the colour law.
+  </Card>
+  <Card title="The app shell" icon="window-maximize" href="/design/navigation">
+    Sidebar, topbar, command palette, keyboard model.
+  </Card>
+  <Card title="Six recurring patterns" icon="shapes" href="/design/patterns">
+    Every screen is built from one of six shapes.
+  </Card>
+  <Card title="The signal path" icon="chart-simple" href="/design/signal-path">
+    The signature element — five segments, where the broken one is the action needed.
+  </Card>
+</CardGroup>
+
+## The gallery
+
+47 screens, exported from the design file.
+
+<CardGroup cols={4}>
+  <Card title="Work" icon="list-check" href="/design/screens/work" />
+  <Card title="Signals" icon="bolt" href="/design/screens/signals" />
+  <Card title="Configure" icon="sliders" href="/design/screens/configure" />
+  <Card title="Records" icon="box-archive" href="/design/screens/records" />
+</CardGroup>

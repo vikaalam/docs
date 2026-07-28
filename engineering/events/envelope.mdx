@@ -1,0 +1,196 @@
+---
+title: "The envelope"
+description: "Every field, the naming rule, and the seven fields that are rejected"
+icon: "envelope"
+mode: "wide"
+---
+
+```json
+{
+  "eventId":       "0192f4c1-1f1a-7b3e-8e0f-6a1c9f0b2d33",
+  "eventType":     "customer.account.created",
+  "specVersion":   "1.0",
+  "occurredAt":    "2026-07-21T04:10:00.000Z",
+  "source":        "core-api",
+  "subject":       { "type": "customer", "ref": "CUS-10293" },
+  "actor":         { "type": "user", "ref": "u-441" },
+  "correlationId": "0192f4c1-1f1a-7b3e-8e0f-6a1c9f0b2d34",
+  "causationId":   null,
+  "depth":         0,
+  "data":          { "tier": "individual", "country": "ID", "channel": "mobile" }
+}
+```
+
+## Event type naming
+
+**`<domain>.<entity>.<past-tense-verb>`**
+
+<Warning>
+  **Past tense is not decoration — it is the enforcement of "publishers state facts".**
+
+  `customer.account.created` is a fact.
+
+  `customer.account.notify_compliance` is an **instruction**, and an instruction in an envelope means
+  the publisher has decided something that belongs to this platform.
+</Warning>
+
+## Zero business domains ship. Five platform domains must.
+
+The core ships **no** business domains — `customer`, `trading`, `compliance` are registered by the
+deploying company.
+
+It **does** ship five platform domains, and it has to:
+
+```
+task · process · integration · reporting · directory
+```
+
+<Note>
+  **Why they must ship:** `automation` is the only stream reader, so the return path —
+  `task.item.state_changed`, `integration.invocation.completed`, `process.instance.completed`,
+  `reporting.run.completed`, `directory.responsibility.changed` — re-enters through the same ingest
+  as any external fact.
+
+  An unregistered event type is a `404`. So those events cannot flow unless their types exist, and
+  they are **seeded at slice 0**.
+</Note>
+
+Two consequences, both easy to get wrong:
+
+<AccordionGroup>
+  <Accordion title="They are the authorization scope for their own event types" icon="lock">
+    `automation` resources scope by event-type domain, so a grant naming `domain:task` is naming a
+    real domain rather than a placeholder.
+  </Accordion>
+  <Accordion title="Every platform event type ships with a catch-all observe workflow" icon="eye">
+    At a low priority.
+
+    Without it, routine internal traffic accumulates in the `unmapped` queue **forever** — and the
+    guarantee that the queue can reach zero is lost to our own traffic.
+  </Accordion>
+</AccordionGroup>
+
+## Seven fields that are rejected
+
+Rejected as `invalid`, **not silently ignored**.
+
+<CardGroup cols={4}>
+  <Card title="severity" icon="ban" />
+  <Card title="recipients" icon="ban" />
+  <Card title="channel" icon="ban" />
+  <Card title="template" icon="ban" />
+  <Card title="actions" icon="ban" />
+  <Card title="assignee" icon="ban" />
+  <Card title="priority" icon="ban" />
+</CardGroup>
+
+<Warning>
+  **Each of those is a decision, not a fact.** Allowing them puts routing policy back into the
+  publisher's codebase — which is the condition this platform exists to end.
+
+  They are declared explicitly in the published JSON Schema so a validator can **name the offender**.
+</Warning>
+
+## The subject is opaque
+
+`subject.ref` is **never validated against a local table.** This platform does not own customers, so
+it cannot know whether `CUS-10293` exists — and a projection of the customer table would violate the
+dividing principle.
+
+What **is** validated:
+
+| Validated | Not validated |
+| --- | --- |
+| `subject.type` against the list declared on the registered event type | Whether the referenced entity exists |
+| `subject.ref` against a declared format for that subject type | Whether it still exists |
+
+A typo like `custmer` is caught as `invalid`. A reference to a customer deleted upstream is not
+caught, **and is not supposed to be**.
+
+### Why subject types are rows, not a list on the event type
+
+This looks like over-engineering until you look at a real estate.
+
+<Note>
+  The first real deployment carries **three incompatible identifier regimes at once**: UUID primary
+  keys, auto-increment integer primary keys, rows carrying **both** with different consumers using
+  different ones, two composite primary keys, one identifier space shared by two entities, and a
+  polymorphic reference column already in production.
+
+  **A bare opaque string silently splits one subject type into two populations that never meet.**
+</Note>
+
+So a subject type is a registered row carrying:
+
+```
+automation.subject_types
+  code           varchar unique   'deposit', 'party', 'payout_destination', …
+  ref_format     varchar          a POSIX regex the ref must match
+  ref_note       varchar          which id space this is, in words, for the operator
+  composite      boolean          true when the ref encodes more than one column
+  scope_selector jsonb null       how to derive authorization scopes from this subject
+  active         boolean
+```
+
+Composite references get a **declared encoding** instead of each publisher inventing a separator.
+
+Two alternatives were rejected: validating references against a local table (violates the dividing
+principle), and requiring publishers to normalise to UUID (the platform does not own the id space and
+cannot impose on it).
+
+## Decimals are strings
+
+<Warning>
+  **JSON numbers are IEEE-754 doubles.** The domain stores amounts, fees, rates and screening scores
+  at high precision — so precision is lost **with no error**, and a threshold condition evaluated over
+  doubles is wrong at exactly the boundary a large-transaction rule exists to detect.
+</Warning>
+
+The rule:
+
+| Requirement | Enforcement |
+| --- | --- |
+| Amounts are decimal **strings** in JSON | A number where a decimal was declared is `invalid` **at ingest**, not coerced |
+| Decimal paths are declared on the event type | Part of its data schema |
+| Conditions compare decimals with an arbitrary-precision comparator | A condition comparing a decimal path to a float literal is **rejected when the workflow is saved** |
+
+<Note>
+  **A compliance threshold that is wrong at the boundary is worse than one that is absent, because it
+  looks configured.**
+
+  Accepting numbers and coercing was rejected: it round-trips convincingly for months.
+</Note>
+
+## Field by field
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `eventId` | ✅ **on both doors** | The occurrence, not the thing. Optional would mean every timeout retry becomes a duplicate notification nobody notices |
+| `eventType` | ✅ | `<domain>.<entity>.<past-tense-verb>`. Must be registered, or `404` |
+| `specVersion` | ✅ | The envelope version |
+| `occurredAt` | ✅ | When it **happened**, not when it arrived |
+| `source` | ✅ | Which system said it |
+| `subject` | ✅ | `{type, ref}`. Shape validated, existence never |
+| `actor` | When a human acted | Type, reference. A system change says so rather than being null |
+| `correlationId` | ✅ | The thread |
+| `causationId` | Null only at the root | The immediate cause |
+| `depth` | ✅ | The loop guard reads it at ingest and at emission |
+| `data` | ✅ | **Facts, not references.** Decimals as strings |
+
+<Note>
+  **Every event a module publishes carries `depth + 1` and the causation of the event that caused
+  it** — exactly like an explicitly emitted one.
+
+  This is easy to miss because module outbox events *feel* like "our own traffic" rather than derived
+  events. They **are** derived events, and a chain that resets depth to zero at every module hop makes
+  the depth guard inapplicable to the traffic that generates the most events.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Ingress" icon="door-open" href="/engineering/events/ingress">
+    Two doors, and the wire shape of each.
+  </Card>
+  <Card title="Idempotency" icon="fingerprint" href="/engineering/events/idempotency">
+    Where the constraint lives, and why it cannot live on the obvious table.
+  </Card>
+</CardGroup>

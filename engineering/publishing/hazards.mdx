@@ -1,0 +1,187 @@
+---
+title: "Publishing hazards"
+description: "Four measured things the contract has to survive, and the facts that were never stated"
+icon: "triangle-exclamation"
+mode: "wide"
+---
+
+Four things were measured in the real estate that the event contract must be read against. **They are
+the reason a publisher guide is a real document and not a template.**
+
+## 1. No write path has a transaction an outbox insert can join
+
+<Warning>
+  **This is the single biggest risk to the contract.**
+
+  And the closest thing to an event system in the estate writes its rows **across two databases,
+  through a second connection.**
+</Warning>
+
+Everything else on this list is a field that exists in scope one to three lines above the send site.
+**Atomicity is not.**
+
+| Consequence | Detail |
+| --- | --- |
+| An outbox is a **schema change**, not a code change | The transaction boundary has to be created first |
+| One service already spans two databases | Which makes the pair inseparable, and is a defect in its own right |
+| One service has **no database at all** | So durable-once publishing is impossible there. At-most-once HTTP, stated as a limitation |
+
+## 2. One occurrence can be published twice, by design
+
+<Warning>
+  A **dual naming taxonomy** means **eight call sites insert two rows per fact**, under different type
+  values — so application-level deduplication **never sees a duplicate.**
+</Warning>
+
+<Note>
+  **A publisher must pick one taxonomy before minting the occurrence id**, or one fact enters as
+  **two events** that pass every guard in the platform.
+
+  The duplicate guard keys on the occurrence id. Two ids means two occurrences, as far as the platform
+  can tell — correctly, and disastrously.
+</Note>
+
+## 3. Money is a float on some paths — and on one, the float decides whether the event fires
+
+<Warning>
+  A high-precision decimal column is **summed as a double** and compared with `>=` **to gate
+  publication.**
+
+  So the loss of precision does not merely corrupt a value. It decides whether anything is said at
+  all, at exactly the boundary a threshold rule exists to detect.
+</Warning>
+
+The contract requires decimal **strings**, which means:
+
+<Note>
+  **Re-read the column as a string.** Do not call `.toString()` on a value that is already lossy — the
+  precision was lost before your line ran.
+</Note>
+
+And on the platform side: a number where a decimal was declared is `invalid` **at ingest**, not
+coerced. A condition comparing a decimal path to a float literal is rejected **when the workflow is
+saved**.
+
+<Warning>
+  **A compliance threshold that is wrong at the boundary is worse than one that is absent, because it
+  looks configured.**
+</Warning>
+
+## 4. Some occurrences cannot be published because they never become facts
+
+<Warning>
+  **`workspace-ops` cannot ingest what was never said.**
+</Warning>
+
+Three measured shapes:
+
+| Case | Why nothing exists to publish |
+| --- | --- |
+| A reportable regulatory group **over the statutory threshold** whose currency matches neither the crypto nor the fiat configured list | Dropped by a two-branch condition with **no `else`, no log, and no counter** |
+| A provider webhook **rejected for a bad signature** | Rejected *before* anything is written — so **not even the rejection has an id** |
+| A balance check | Only runs **as a side effect** of the call succeeding |
+
+**32 such occurrences are itemised**, each with the specific change its source service needs.
+
+<Note>
+  There is also one genuine **accepted-but-not-recorded** case: the provider holds a filing, the local
+  status write-back affects fewer rows than expected, and the next run **re-files those records**.
+</Note>
+
+## A claim that was withdrawn
+
+Kept visible rather than quietly removed, because the discipline matters more than the tidiness.
+
+<Warning>
+  **An earlier version of this analysis claimed that a rejected regulatory filing was "swallowed by its
+  own error handler and counted as submitted".**
+
+  Measured again in the code on **2026-07-27** — **it is not**, and the claim is withdrawn.
+
+  The response interceptor throws whenever the provider answers a non-200 **body** code, **before** the
+  status write-back. The rejection propagates into the error list, the submitted counter is **not**
+  incremented, and the failure **is** notified. **The rejection path is covered.**
+
+  What is *not* covered is **omission** — the cases in section 4 above.
+</Warning>
+
+<Note>
+  **A checkable number or claim that is wrong costs more than one never made.** Correcting it in place,
+  with the correction visible, is cheaper than a reputation for confident wrongness.
+</Note>
+
+## The four patterns the design was rebuilt around
+
+These were not anticipated by the original problem statement, and each one changed a specific part of
+the architecture.
+
+<AccordionGroup>
+  <Accordion title="The chat tool holds workflow state" icon="comment">
+    In one domain, **14 of 21 "notifications" are emoji reactions** added to an earlier message to mark
+    an item finished or cancelled. The message timestamp is never stored, so each reaction re-reads the
+    channel and **string-matches the rendered message text** to find its target.
+
+    Renaming a title, editing the formatter, or 100 intervening messages each silently break it.
+
+    **These are state transitions with no home** — the gap the process and task layers fill.
+  </Accordion>
+  <Accordion title="Alerting is inverted relative to severity" icon="volume-xmark">
+    One service has **51 send sites, every one inside a `catch`** — no success notification at all.
+
+    Meanwhile the one genuinely unrecoverable failure, a partner callback exhausting its retries, is
+    dropped by a bare attempt-count check and **notifies nobody**.
+
+    Transient failure screams; permanent failure is silent. `dead` is a visible state because of this.
+  </Accordion>
+  <Accordion title="The payload is a pointer, not a fact" icon="link-slash">
+    Two codebases sharing no code independently converged on sending `{type, id}` and nothing else.
+
+    The receiver must therefore **hold the sender's database credential** and re-read the row — racily,
+    since it may have changed. The complete fact object exists one to three lines above the send and is
+    thrown away.
+
+    This is why the envelope carries `data`, and why *"data, not prose"* is incomplete as a rule: it
+    must also be **data, not a reference.**
+  </Accordion>
+  <Accordion title="Routing is imperative code, not configuration" icon="code-branch">
+    A single message's destination can be decided by a gitignored JSON file, two nullable database
+    columns, an environment variable shared between services, a ternary on record status, or three
+    reassignments inside one controller.
+
+    A missing key sends to `channel: undefined`, which the chat API answers `ok:false` **inside an HTTP
+    200** — and the error is swallowed. **Messages disappear with no trace and no counter.**
+  </Accordion>
+</AccordionGroup>
+
+## One outbound URL, four different events, no type field
+
+<Warning>
+  In the audited estate, a single outbound URL received **four distinct events** with **no type field
+  and no resource id**. The receiver routed by sniffing key names inside a JSON string **nested inside
+  the JSON body** — parse twice, then guess.
+
+  `eventType` exists so that a destination never has to guess what it just received. **One
+  discriminator per destination is not optional.**
+</Warning>
+
+## A near-miss worth carrying forward
+
+One helper derived a "unique" key as `uuidv5(id)` **without including the record type** — so record
+`5` of one kind and record `5` of another produced the **same** key.
+
+<Note>
+  Any consumer deduplicating on it would have **silently dropped real events.**
+
+  A derived idempotency key must incorporate **every field that distinguishes the occurrence** — which
+  is why the platform derives an action key from the event *and* the action, never from a bare resource
+  id.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="The estate" icon="sitemap" href="/engineering/publishing/estate">
+    Who can publish, and on which door.
+  </Card>
+  <Card title="The publishing guide" icon="tower-broadcast" href="/engineering/publishing/guide">
+    The outbox pattern and the checklist.
+  </Card>
+</CardGroup>

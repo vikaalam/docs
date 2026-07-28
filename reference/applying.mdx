@@ -1,0 +1,122 @@
+---
+title: "Applying it"
+description: "What you declare, what is derived for you, and the mistakes this model prevents"
+icon: "pen-to-square"
+---
+
+Read [Authorization](/reference/authorization) first — this page assumes the two guards and the three
+dimensions.
+
+## What you declare, and what you get for free
+
+<CardGroup cols={2}>
+  <Card title="Derived — do nothing" icon="wand-magic-sparkles">
+    **Module access.** `module:<name>:access` comes from the route prefix. Put the endpoint in the
+    right place and the first guard is already enforcing.
+  </Card>
+  <Card title="Declared — state it per operation" icon="pen">
+    **Resource permission.** `<resource>:<action>:<scope>` is specific to what the operation does, so
+    nothing can infer it. This one is yours to write.
+  </Card>
+</CardGroup>
+
+<Warning>
+  **Never re-declare the module guard alongside the resource permission.** Two sources for one fact
+  drift, and the annotation is the one that will be wrong — it is the one a refactor can move without
+  moving the route.
+</Warning>
+
+## Choosing the scope
+
+Scope is the dimension most likely to be got wrong, because the wrong answer still works in
+development, where the operator holds everything.
+
+<Steps>
+  <Step title="Ask what the grant should mean, not what the query needs">
+    `task:read : queue:compliance` means *"may read tasks in the compliance queue."* If you cannot
+    phrase the permission as an English sentence a manager could approve, the scope is wrong.
+  </Step>
+  <Step title="Single resource: read the scope off the row">
+    You already have the row. Ask the enforcer about its label.
+  </Step>
+  <Step title="List: ask for the label set and filter in SQL">
+    ```sql
+    WHERE (scopes = '{}' OR scopes && :granted_scopes)
+    ```
+    Both arms. The `scopes = '{}'` arm is what keeps unscoped rows visible; dropping it hides them
+    from everyone and looks like a permissions bug rather than a missing clause.
+  </Step>
+  <Step title="Never let 'no scope' mean 'every scope'">
+    The wildcard is its own permission and is granted on purpose. If your code treats an absent scope
+    as unrestricted, a forgotten declaration becomes production-wide access.
+  </Step>
+</Steps>
+
+## Reaching for a global resource
+
+If the operation touches `integration:destination`, `integration:provider_credential` or
+`automation:publisher`, three extra obligations apply:
+
+<AccordionGroup>
+  <Accordion title="The grant is separate, and never implied by module access" icon="key">
+    Holding `module:integration:access` does not grant destination edit. Ask for the resource
+    permission explicitly, and expect the denial to be **common and expected** rather than
+    exceptional — the screen should say which permission is missing, not simply fail.
+  </Accordion>
+  <Accordion title="Every mutation confirms — including edits" icon="triangle-exclamation">
+    Not only deletes. An edit to a destination changes where data goes just as surely as a delete
+    stops it.
+  </Accordion>
+  <Accordion title="The screen carries the global-resource treatment" icon="shield">
+    A key mark, a warning rule stating the consequence in one line, and no decoration beyond it. The
+    treatment is used **only** for these three, so that it still means something when it appears.
+  </Accordion>
+</AccordionGroup>
+
+## Four mistakes this model is shaped to prevent
+
+| Mistake | What the model does instead |
+| --- | --- |
+| A forgotten annotation silently disables a check | The module guard is **derived from routing** and cannot be omitted |
+| "No scope" quietly means "all scopes" | The wildcard is a **separate, grantable** permission |
+| A list endpoint leaks rows the subject cannot open | The enforcer yields a **label set**; the repository filters |
+| Two identities for one person | Identity is the **`email` claim**; a token without a verified one is rejected, never defaulted to `sub` |
+
+## Denials are a designed state, not an error
+
+<Note>
+  A denial on a global resource is **expected traffic**, not an exception. The screen replaces its
+  content in place and names the exact permission required — for example
+  *"Needs `automation:publisher:read : *`, granted separately from access to Signals because it
+  decides who may inject events."*
+</Note>
+
+A denial that renders as a generic error teaches the operator to file a bug. A denial that names the
+permission teaches them to ask for it.
+
+## Where to look when something is denied
+
+<Steps>
+  <Step title="Check which guard refused">
+    A module refusal and a resource refusal are different problems. The first is usually routing; the
+    second is usually a missing grant or the wrong scope.
+  </Step>
+  <Step title="If it is a grant, it is not fixed here">
+    The catalogue, the roles and the grants live in `auth-service`. This platform only decides and
+    enforces — it cannot issue a permission it was not given.
+  </Step>
+  <Step title="If it appeared right after a change, remember revocation is eventually consistent">
+    Bounded by a < 5 s p99 invalidation signal. A grant that "should" be live may not be yet.
+  </Step>
+</Steps>
+
+<Card title="Implementing it" icon="code" href="/reference/implementation">
+  The same model as working code — the derived module guard, the declared permission, and the two
+  scope shapes.
+</Card>
+
+<Warning>
+  **This page is a rendering of `ARCHITECTURE.md` §11 and never a source.** Where §11 does not name a
+  mechanism, this page does not invent one — it describes the obligation and leaves the
+  implementation to the shared client package the platform is required to use.
+</Warning>

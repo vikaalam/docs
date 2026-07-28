@@ -1,0 +1,111 @@
+---
+title: "What you gain"
+description: "Control question by control question — before, and after"
+icon: "circle-check"
+---
+
+Each row below is a question a reviewer, an auditor, or a regulator actually asks.
+
+## Evidence of performance
+
+| Question | Today | With `workspace-ops` |
+| --- | --- | --- |
+| Was this review actually performed? | A chat message, if it was not deleted | A task in a terminal state, with an owner, an outcome and a timestamp |
+| Was a mandatory step skipped? | **No record exists either way** | A step that did not run is a step in a state, visible on the case |
+| Who performed it? | Read from the session, written to the database, and **dropped before the message** | The actor, on the task and on the audit entry |
+| When was it performed? | The chat message timestamp, if it still exists | Both when it *happened* and when the platform *learned* about it |
+| Under what rules? | Whatever the procedure said at some point | The **pinned definition version** the case started under |
+
+<Note>
+  **Pinned versions are the quiet win.** A case that started last quarter is completed under last
+  quarter's process definition, and old versions are never deleted. A regulated case is auditable
+  against the rules that were *actually in force when it started* — which is the only version that
+  matters in an assessment.
+</Note>
+
+## Evidence of notification
+
+| Question | Today | With `workspace-ops` |
+| --- | --- | --- |
+| Was the responsible person told? | Search a chat channel | A delivery row with a recipient and an outcome |
+| Was anyone told at all? | **Unanswerable.** A missing routing key sent to `channel: undefined`, which the chat API answered `ok:false` **inside an HTTP 200**, swallowed | `no_recipient` — a distinct, visible outcome that makes the event `partial` |
+| Which events notify whom? | A grep of seven codebases | A query against configuration |
+| Why was this severity chosen? | It was hard-coded at the call site | Channel policy: a category-by-severity grid, edited and audited |
+
+## Evidence of filing
+
+| Question | Today | With `workspace-ops` |
+| --- | --- | --- |
+| Did we file it? | A "submitted" flag, or a screenshot in a shared drive | A **submission receipt** retained as evidence |
+| Can we reproduce the report? | The numbers were whatever four systems returned that afternoon | A run with a period, a watermark, a row count, a **checksum** and a duration |
+| Where did it go? | A URL in a configuration file somewhere | A **named destination** row — `regulator-str-filing`, not an endpoint |
+| Who filed it? | Whoever had the portal credentials | The platform, through the single outbound door, recorded as an invocation |
+| Was quality control done? | "Someone senior looked at it", evidenced by a chat message | A four-eyes step the engine enforced |
+
+<Warning>
+  **"We filed it" is a claim. A receipt is a record.**
+
+  A claim does not survive an audit three years later, when the analyst has left, the spreadsheet has
+  been edited, and the portal has been redesigned.
+</Warning>
+
+## Evidence of change control
+
+| Question | Today | With `workspace-ops` |
+| --- | --- | --- |
+| Who changed this rule? | Read application logs, if at all | An audit entry with actor, before, after, and changed fields |
+| Was a change reviewed? | It was a deploy, so — maybe | Configuration change is audited with a diff, and exportable to a diffable file |
+| Was an unauthorised attempt made? | **Nothing records it** | A `rejected` audit entry, committed independently of the refused action |
+| Can the record be altered? | Application logs can be rotated and edited | Append-only enforced by **database privilege**, plus hourly tamper-evidence seals |
+
+<Note>
+  **The honest cost, stated:** configuration lives in a database rather than in git. An operator who
+  can edit a workflow can change who is notified about a compliance failure.
+
+  That is exactly as sensitive as a code deploy. The two mandatory mitigations — a diffable
+  configuration export and the audit trail — exist because of this, and they are mandatory *before*
+  production, not aspirational.
+</Note>
+
+## Evidence of responsibility
+
+This is the one that no amount of refactoring in the existing systems would have produced.
+
+| Question | Today | With `workspace-ops` |
+| --- | --- | --- |
+| Who is responsible for this kind of work? | **Not modelled anywhere in seven services.** Every destination is a channel, chosen by whichever code is running | A responsibility rule — configuration, versioned, audited |
+| What happens if they leave? | The channel keeps receiving messages nobody owns | The person projection deactivates them; work escalates to the fallback in the chain |
+| Can one person approve their own work? | In the audited source, this was controlled at two approval routes — by hand, in application code | Enforced by the process engine, with the attempt recorded when it is refused |
+
+## Data protection
+
+| Question | Today | With `workspace-ops` |
+| --- | --- | --- |
+| Can we honour an erasure request? | Not without deleting audit records | **Crypto-shredding** — destroy the per-subject key; the record survives and stays countable |
+| Can we prove an erasure happened? | No | A key with a destruction state, and an audit entry recording it |
+| Can a legal hold block an erasure? | Manually, by remembering | The hold **refuses** the key destruction, and the refusal is itself audited |
+| How long is each thing kept? | Various, mostly undocumented | Declared per store, per record type, per report obligation |
+
+<Warning>
+  **Crypto-shredding must be in place before the first personal data is written.** Retrofitting means
+  re-encrypting an append-only history — it is the one item in the entire design that cannot be
+  retrofitted, and it is called out as a delivery risk for that reason.
+</Warning>
+
+## Summary — the five things you get that you do not have
+
+<CardGroup cols={2}>
+  <Card title="A responsibility model" icon="users">
+    Who is accountable for a kind of work, as configuration rather than as a channel name in code.
+  </Card>
+  <Card title="A permanent, un-editable record" icon="lock">
+    Every change and every denied attempt, with an actor and a before/after, enforced by database
+    privilege.
+  </Card>
+  <Card title="Proof rather than claims" icon="file-shield">
+    Receipts, checksums, artifacts, and pinned versions — not flags and screenshots.
+  </Card>
+  <Card title="Silence that means something" icon="volume-xmark">
+    Because every dead end is visible, the absence of a queue item is evidence rather than an unknown.
+  </Card>
+</CardGroup>

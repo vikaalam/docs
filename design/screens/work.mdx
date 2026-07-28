@@ -1,0 +1,107 @@
+---
+title: "Gallery · Work"
+description: "Attention, tasks, queues and cases — the operator's screens"
+icon: "list-check"
+mode: "wide"
+---
+
+Everything an operator opens. Owned by `task` and `process`, except the first one.
+
+## Attention
+
+<img src="/images/screens/attention.webp" alt="Attention — the union of six modules' queues" noZoom />
+
+Cross-module by design. It unions the queue promises of six modules and **owns none of them** — which
+is why it is specified with the patterns rather than with a module, and why it must never grow logic
+of its own.
+
+## My tasks
+
+<img src="/images/screens/my-tasks.webp" alt="My tasks — one operator's work, grouped by domain" noZoom />
+
+`task` — *"a unit of human work: assignment, lifecycle, SLA, form, comments, attachments."* Grouped
+by business domain.
+
+## My tasks — compliance view
+
+<img src="/images/screens/my-tasks-compliance.webp" alt="My tasks, filtered to the compliance domain" noZoom />
+
+The same screen scoped to one team's work. Queue scope is the third dimension of authorization —
+enforced on the server, not by filtering in the browser.
+
+## My tasks — board
+
+<img src="/images/screens/my-tasks-kanban.webp" alt="The same tasks grouped by workflow state" noZoom />
+
+Same data as the list, grouped by workflow state instead of listed. **A view option, not a new
+screen.**
+
+## Queues
+
+<img src="/images/screens/queues.webp" alt="Queues — depth, unassigned work, SLA health" noZoom />
+
+`task` — team queues: depth, unassigned work, SLA health. The scope is `queue:<domain>`.
+
+## Task detail
+
+<img src="/images/screens/task-detail.webp" alt="Task detail — outcome form, evidence, provided links, activity" noZoom />
+
+One work unit opened: the outcome form, evidence, **provided links with their provenance shown**, and
+the activity history.
+
+<Note>
+  A link that arrived in an envelope is the one URL a reviewer is trained to click. The interface
+  always states where it came from rather than appearing to vouch for it.
+</Note>
+
+## Cases
+
+<img src="/images/screens/cases.webp" alt="Cases — running instances, their step, and what each waits on" noZoom />
+
+`process` — *"versioned definitions and stateful instances; steps automatic, human, waiting, branching,
+or parallel."* Answers *"where is this case, and why is it stuck?"*
+
+## Case detail
+
+<img src="/images/screens/case-detail.webp" alt="Case detail — ordered steps, pinned version, armed timers, sub-tasks" noZoom />
+
+A stateful, resumable instance: ordered steps, a **pinned definition version**, armed timers, and the
+sub-tasks handed to people.
+
+The one drawn here is waiting on a source-of-funds document past its deadline — which is why it
+escalated.
+
+## The compliance dashboard
+
+<img src="/images/screens/dashboard.webp" alt="A per-team landing screen" noZoom />
+
+**Not a module.** A per-team landing that aggregates open reviews, SLA breaches and regulatory
+filings. Every card is owned by a real module; **this screen owns none of it.**
+
+## A second set exists, scoped to Operations
+
+Eight further screens were designed for the Operations persona against the **measured event
+catalogue** rather than against the module documents — a distinct sidebar, and a distinct rule.
+
+<Note>
+  **Four of them are named after business entities and none of them lists one.** Deposits, parties,
+  virtual accounts and instructions each show the *work* and the *signals* about their subject, and
+  each says so on the screen — because the company-agnostic rule erodes exactly there.
+</Note>
+
+They are rendered where their reader is, rather than duplicated here.
+
+<CardGroup cols={2}>
+  <Card title="The Operations subject areas" icon="layer-group" href="/operations/subjects">
+    Deposits · Parties · Virtual accounts · Instructions
+  </Card>
+  <Card title="The Operations daily screens" icon="sun" href="/operations/day-in-the-life">
+    Attention · My tasks · Cases · Notifications, in the Ops rendering
+  </Card>
+</CardGroup>
+
+<CardGroup cols={3}>
+  <Card title="Signals" icon="bolt" href="/design/screens/signals" />
+  <Card title="Configure" icon="sliders" href="/design/screens/configure" />
+  <Card title="Records" icon="box-archive" href="/design/screens/records" />
+</CardGroup>

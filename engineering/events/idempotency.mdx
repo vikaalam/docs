@@ -1,0 +1,167 @@
+---
+title: "Idempotency and loop guards"
+description: "Four guards, and the PostgreSQL rule that forced the design of one of them"
+icon: "fingerprint"
+mode: "wide"
+---
+
+## The four guards
+
+| Guard | Rule | Result |
+| --- | --- | --- |
+| **Duplicate** | `INSERT` into `automation.event_keys` inside the ingest transaction; **a conflict *is* the duplicate branch** | `duplicate`; HTTP answers `409` |
+| **Depth** | `depth > <configured limit, default 5>` | `depth_exceeded` |
+| **Cycle** | **`(eventType, subject.type, subject.ref)`** repeats within the causation chain | `cycle_detected` |
+| **Action re-execution** | A derived idempotency key per action, plus an `Idempotency-Key` header on every outbound call | Locally: the key is derived, so a retry collides with its own row. Remotely: **best-effort** |
+
+## Idempotency cannot live where you would put it
+
+This is a hard PostgreSQL rule, not a preference.
+
+<Warning>
+  **A unique index on a partitioned table must include every column of the partition key.**
+
+  `ingested_events` is partitioned by month, so `UNIQUE (event_id)` is **not creatable at all**. The
+  only constraint the database will accept is `UNIQUE (event_id, received_at)` — which permits the
+  same event id in two different months.
+</Warning>
+
+That is not a theoretical gap. It fires in exactly the cases idempotency exists for:
+
+- A publisher retrying **across a month boundary**
+- Stream recovery reclaiming a pending message after an outage **spanning month-end**
+- A **replay** of an old envelope
+
+So the constraint lives in its own unpartitioned table:
+
+```sql
+CREATE TABLE automation.event_keys (
+  event_id     uuid PRIMARY KEY,        -- unpartitioned: the constraint is real
+  received_at  timestamptz NOT NULL
+);
+CREATE INDEX ON automation.event_keys (received_at);
+```
+
+`ingested_events` keeps monthly partitioning for `DROP PARTITION` retention and carries no unique
+constraint of its own.
+
+<Note>
+  `event_keys` is **two columns wide**, so the vacuum cost that motivated partitioning does not apply
+  and a batched `DELETE` is an acceptable retention mechanism **here and nowhere else**.
+</Note>
+
+### Why not hash partitioning
+
+Partitioning by `hash(event_id)` would make the constraint creatable. It was rejected: `DROP
+PARTITION` is only meaningful when partitions are time-ordered, so it **trades away the one thing
+partitioning was for**.
+
+### The rule generalised
+
+<Warning>
+  **A partitioned table never carries a global unique constraint.** Where one is required it lives in
+  a sibling unpartitioned `*_keys` table that also carries the guarded row's id.
+</Warning>
+
+This started as a one-off fix and was then applied as a rule — which immediately found two more
+instances:
+
+| Table | Was | Would have |
+| --- | --- | --- |
+| `integration.invocations` | Declared partitioned **while still declaring a unique idempotency key** | Failed to migrate |
+| `notification.deliveries` | Same | Failed to migrate |
+
+Both are in modules that reason at length about what happens when that exact constraint stops firing.
+`action_executions` is named as the next casualty, with the decision due before its migration.
+
+## Three retention interlocks
+
+<Warning>
+  **A key table's retention must exceed the retention of the table it guards.**
+
+  If a key expires before the rows it protects, a retry becomes a **duplicate effect** — silently.
+</Warning>
+
+| Key table | Must outlive |
+| --- | --- |
+| `automation.event_keys` | The **Redis stream retention horizon**. An event trimmed from the stream but still in the key table is correctly deduplicated. The reverse is a duplicate notification |
+| `integration.invocation_keys` | `invocations` |
+| `notification.delivery_keys` | `deliveries` |
+
+The same partitioning rule also forces the audit table to a composite primary key.
+
+## The cycle guard needs the subject
+
+<Warning>
+  **Keying on the event type alone was the original design, and it is wrong.**
+</Warning>
+
+Once the return path runs through the stream, `task.item.state_changed` **legitimately recurs four
+times in a single onboarding case**, and `integration.invocation.completed` once per provider call.
+
+A type-only guard would classify a perfectly normal case as a loop and stop it.
+
+<Note>
+  **A genuine loop revisits the same subject. A healthy case walks the same event type across
+  different steps of one subject.**
+
+  Which is also why the subject alone is not enough either — **the pair is.**
+</Note>
+
+One consequence, recorded rather than worked around: **an event with no subject cannot be
+cycle-guarded**, so such event types are **refused registration**.
+
+## Depth travels through modules
+
+Every event a module publishes carries `depth + 1` and the causation of the event that caused it —
+exactly like an explicitly emitted one.
+
+<Warning>
+  This is easy to miss, because module outbox events *feel* like "our own traffic" rather than derived
+  events.
+
+  **They are derived events**, and a chain that resets depth to zero at every module hop makes the
+  depth guard inapplicable to the traffic that generates the most events.
+</Warning>
+
+## Guards catch configuration defects, not delivery failures
+
+`depth_exceeded` and `cycle_detected` are **configuration defects**, and are surfaced differently in
+the interface for that reason.
+
+<Note>
+  Two workflows baiting each other will fill Redis and the ingest history **long before anyone reads a
+  log line**. This needs a configurator, not an on-call engineer.
+</Note>
+
+## At-most-once, where it actually matters
+
+For a regulatory filing, "probably once" is not good enough.
+
+<Steps>
+  <Step title="Mark before calling, in its own transaction">
+    So the intent to call survives whatever happens next.
+  </Step>
+  <Step title="Make the call">
+    Sending an idempotency header is correct and free.
+  </Step>
+  <Step title="On uncertainty, reconcile by status query">
+    **Never blind resend.** Ask the far side what it thinks happened.
+  </Step>
+</Steps>
+
+<Warning>
+  We cannot impose an obligation on a third-party gateway. It honours the header, ignores it, or
+  implements it differently — and we find out during an incident.
+
+  **At-most-once is achieved on our side of the wire, or not at all.**
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Matching and actions" icon="filter" href="/engineering/events/matching-and-actions">
+    What happens once an event survives all four guards.
+  </Card>
+  <Card title="The data model" icon="database" href="/engineering/platform/data-model">
+    Where the partitioning rule sits among the other cross-schema properties.
+  </Card>
+</CardGroup>

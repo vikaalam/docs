@@ -1,0 +1,137 @@
+---
+title: "The problem"
+description: "Measured, not assumed — what a full read of seven production services actually found"
+icon: "magnifying-glass"
+---
+
+Most operations teams have no single place for the operational layer. The failure mode is not that
+any one piece is broken — it is that the layer has no home, so it **cannot be inspected, tested, or
+handed over**.
+
+Concretely, the starting condition looks like this:
+
+- Events are posted **straight to chat** from inside application code, in dozens of places.
+- Nobody can answer *"which events produce a notification, and who receives them?"* without grepping
+  the codebase.
+- Manual procedures — verify, review, approve — live in a runbook or in someone's head. **There is no
+  record that a step was skipped.**
+- *"Who changed this?"* is answered by reading application logs, if at all.
+
+## This was measured
+
+Those four bullets were written from experience, then checked. Every place any service sends an
+operational message across a **seven-service production estate** was read.
+
+<Note>
+  **139 send sites.** The table below is the audit of record.
+</Note>
+
+| Measured | Count | What it means |
+| --- | --- | --- |
+| Carry an id for the occurrence | **0** | Deduplication and replay are not *hard* in that estate — they are **impossible** |
+| Carry the time the thing happened | **0** | Several compute the timestamp one line above the send and discard it. Ordering cannot be reconstructed |
+| Carry the acting person | ~4 | The approver is read from the session, written to the database, and dropped before the message |
+| Send data rather than a rendered sentence | ~half | The rest weld amounts, names and `null → '-'` into display strings. The original values are unrecoverable |
+| Distinct transport mechanisms | **7** | Three services solved channel routing three different ways; a fourth cannot route at all |
+
+<Accordion title="Re-measured twice — the sub-figures drift, the load-bearing one does not" icon="repeat">
+  A fresh count on **2026-07-22** (one call expression per send site in non-test source, across all
+  seven services) found **145** send sites rather than 139, and:
+
+  - **Occurrence id still 0** — the figure the whole design rests on
+  - Time-of-occurrence **1, not 0** (one site sends a stored row timestamp)
+  - Acting person **~8, not ~4** (a family of approve-webhooks carrying a reviewer was missed)
+  - Rendered strings **~⅓ at the call site, not ~half** — though **100%** are prose by the time they
+    reach the wire, since one shared chat layer folds every body into a single `text` string
+  - Transport mechanisms **10, not 7**
+
+  A third read on **2026-07-27**, of the primary publishing service alone, enumerated **75 send sites**
+  and **occurrence id still 0**.
+
+  The counts in the table above are left as the audit of record; this is the correction. A checkable
+  number that is wrong costs more than one never claimed. **The conclusion each figure supports is
+  unchanged.**
+</Accordion>
+
+## Four failure patterns nobody anticipated
+
+The four bullets at the top did not predict these. Each one shaped a specific part of the design.
+
+<AccordionGroup>
+  <Accordion title="The chat tool holds workflow state" icon="comment">
+    In one domain, **14 of 21 "notifications" are emoji reactions** added to an earlier message to
+    mark an item finished or cancelled. The message timestamp is never stored, so each reaction
+    re-reads the channel and **string-matches the rendered message text** to find its target.
+
+    Renaming a title, editing the formatter, or 100 intervening messages each silently break it.
+
+    These are not notifications. They are **state transitions with no home** — precisely the gap the
+    `process` and `task` layers exist to fill.
+  </Accordion>
+  <Accordion title="Alerting is inverted relative to severity" icon="triangle-exclamation">
+    One service has **51 send sites and every one is inside a `catch` block** — there is no success
+    notification at all. Meanwhile the one genuinely unrecoverable failure in that service, a partner
+    callback exhausting its retries, is dropped by a bare attempt-count check and notifies nobody.
+
+    **Transient failure screams; permanent failure is silent.**
+  </Accordion>
+  <Accordion title="The payload is a pointer, not a fact" icon="link-slash">
+    Two codebases sharing no code independently converged on sending `{type, id}` and nothing else.
+    The receiver must therefore **hold the sender's database credential** and re-read the row —
+    racily, since it may have changed.
+
+    The complete fact object exists one to three lines above the send and is thrown away.
+  </Accordion>
+  <Accordion title="Routing is imperative code, not configuration" icon="code-branch">
+    A single message's destination can be decided by a gitignored JSON file, two nullable database
+    columns, an environment variable shared between services, a ternary on record status, or three
+    reassignments inside one controller.
+
+    A missing key sends to `channel: undefined`, which the chat API answers `ok:false` **inside an
+    HTTP 200** — and the error is swallowed. **Messages disappear with no trace and no counter.**
+  </Accordion>
+</AccordionGroup>
+
+## The one thing no refactor would produce
+
+<Warning>
+  **Not one of the seven services models *who is responsible for a thing*.** Every destination is a
+  channel, chosen by the code that happens to be running.
+</Warning>
+
+That is the gap this product exists to fill, and it is why responsibility is a **module** rather than
+a column. You can refactor a codebase into perfect shape and still not have an answer to "who owns
+this review", because nothing in it was ever asked to hold one.
+
+## A finding that changed a recommendation
+
+The same estate **already contained a correct event system** — typed events, a stable id, a delivery
+state, a signature, bounded retry with backoff — used for outbound partner callbacks. Nobody
+described it as one.
+
+Two things were wrong with it rather than missing:
+
+1. The producing service wrote rows **directly into the consuming service's database**, making the
+   pair inseparable.
+2. Exhausting the retries notified no one.
+
+<Tip>
+  The target pattern usually **already exists somewhere in the estate**. Finding it and generalising
+  it is a better opening move than proposing a new one.
+</Tip>
+
+## What "solved" looks like
+
+| Today | After |
+| --- | --- |
+| Scattered chat calls in dozens of files | One pipeline, one matcher |
+| *"Which events notify whom?"* is a grep | A query |
+| *"Where is this case stuck?"* is four systems | One screen |
+| A skipped manual step leaves no trace | A task with an owner, an SLA, and a state history |
+| *"We filed it"* is a claim | A run with a checksum, an artifact, and a submission receipt |
+| A permanent failure is silent | A visible queue item that can reach zero |
+
+<Card title="Next: the core idea" icon="lightbulb" href="/overview/core-idea">
+  Three layers that are usually collapsed into one — and the test that decides which one a
+  requirement belongs to.
+</Card>

@@ -1,0 +1,195 @@
+---
+title: "The design language"
+description: "Tokens, typography, density, and the one colour law everything else obeys"
+icon: "swatchbook"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/my-tasks.webp"
+  alt="The current design language — light, dense, colourful but calm"
+  noZoom
+/>
+
+## The reference
+
+**Colourful, dense, information-rich, but calm.** The reference is a modern work-management product —
+not a monitoring dashboard, and not a consumer app.
+
+<Note>
+  **This is the current rendering, decided 2026-07-27.** It was implemented across twenty screens
+  *before* it was written down anywhere, and the written version is that implementation **read back
+  off the canvas** — not a fresh proposal.
+
+  Where the canvas and the written spec disagree, **the canvas is the record**, because it is what a
+  reviewer looks at.
+</Note>
+
+### What changed from the previous kit
+
+| | Previous dark kit | Current light kit |
+| --- | --- | --- |
+| Surface | Near-black, dark-only | `#F3F3F8`, light-only |
+| Interaction hue | Blue | **Violet `#7B68EE`** |
+| Blue | Reserved for interaction | Now free, and spent as the **`info` status** |
+| Radius | 3 / 5 / 8 | 5 / 6 / 7 / 10 |
+| Row height | 36 comfortable / 28 compact | **54 standard / 44 compact** |
+| Type face | Two families | **One sans, one mono for values** |
+| Elevation | Borders, not shadows | **Unchanged** |
+| **The colour law** | — | **Unchanged** |
+
+<Warning>
+  **Only the assignment moved. The law's shape is untouched:** the interaction hue is still never a
+  status, status still owns its own hues, and a categorical field still gets a fixed value-to-colour
+  map.
+</Warning>
+
+## The colour law
+
+<Steps>
+  <Step title="The interaction hue is never a status">
+    Violet means *"you can act on this"*. It never means *"this is fine"* or *"this is broken"*.
+  </Step>
+  <Step title="Status owns its own hues, consistently, everywhere">
+    Green `dispatched` · amber `no_recipient` / `unmapped` · red `unknown_subject` / `dead` ·
+    neutral grey `suppressed` / `duplicate`.
+
+    Learn them once and every status screen in the product is readable.
+  </Step>
+  <Step title="A categorical field gets a fixed value-to-colour map">
+    And the map does not vary per screen.
+  </Step>
+  <Step title="At most one coloured categorical dimension per screen">
+    Where disposition is coloured, owner team goes neutral.
+  </Step>
+</Steps>
+
+### Where the accent collided with a category, the category moved
+
+<Note>
+  A workflow's **disposition** is a categorical field: `act`, `observe`, `suppress`.
+
+  The obvious map assigns violet to `suppress` — on the assumption that the accent is blue and violet
+  is free. **In this kit the accent *is* violet, so violet is spent.**
+
+  The collision was not theoretical: the categorical violet and the active-navigation fill are within a
+  couple of hex points of each other, which would have given a `suppress` pill and an active nav item
+  **near-identical fills.**
+
+  The law forbids the interaction hue carrying a data meaning, so **the categorical value moved** —
+  `suppress` is fuchsia — **and the accent keeps the hue.**
+</Note>
+
+## Tokens
+
+| Role | Value |
+| --- | --- |
+| Page background | `#F3F3F8` |
+| Raised surface — table head, group header, footer, sidebar | `#FBFAFD` |
+| Card fill | `#FFFFFF` |
+| Hairline | `#F0EFF4` |
+| Structural border | `#E7E5F0` |
+| Primary text | `#1D1B2E` |
+| Secondary text | `#6E6B85` |
+| Tertiary / label text | `#757289` |
+| **Accent — interaction only** | **`#7B68EE`** |
+| Accent fill — active nav, active page | `#EFECFC` |
+| Accent fill — filter chips | `#F6F4FE` |
+| Status `ok` | `#E2F4EB` / `#1F8A5B` |
+| Status `warn` | `#FBF0D8` / `#B0781A` |
+| Status `error` | `#FAE5E2` / `#C43D30` |
+| Status `info` | `#E8EEFD` / `#2F6FED` |
+| Status `neutral` | `#EFEDF4` / `#6E6B85` |
+
+## Geometry
+
+| Element | Spec |
+| --- | --- |
+| Screen | `1440 × 960` |
+| Sidebar | `240` wide, right border, `12` padding |
+| Nav item | `[6,8]` padding, radius `6`, icon `15`, label `13/500` |
+| Nav item — active | Accent fill; icon and label in the accent, label weight `600` |
+| Topbar | `[12,20]` padding, bottom border, space-between |
+| Content | `[20,24]` padding, `14`–`16` gap |
+| Page title / subtitle | `24/700` · `13/normal`, `3` gap |
+| Card | radius `10`, white fill, structural border |
+| Table head | height `40`, raised fill, labels `11/600` with letter-spacing |
+| Row | height **`54`** (`44` compact), bottom hairline |
+| Cell | `[0,14]` padding, fill height, centre-aligned |
+| Pill / chip | radius `5`–`6`, `[3,9]`–`[4,10]` padding, `10.5`–`11/600` |
+| Primary button | radius `7`, accent fill, white `12.5/600`, `[8,14]` padding |
+| Toggle | `28 × 16`, radius `8`, `12px` knob |
+| Avatar | `22` in a row, `28` in the topbar |
+
+## Typography
+
+<Note>
+  **If a value could be pasted into a terminal or a query, it is mono.** Event ids, subject
+  references, event types, timestamps, counts.
+
+  **Prose and labels are sans.**
+
+  That is a reading aid, not decoration: monospace means *this is an exact value you may need to
+  copy*.
+</Note>
+
+**All interface copy is in English**, even where the working conversation is not. The product's whole
+vocabulary is already English — `dispatched`, `unmapped`, `eventType` — so mixed-language labels
+would fight the data beside them.
+
+## Restraint governs
+
+The colour budget is about **how much** colour, not which.
+
+<CardGroup cols={2}>
+  <Card title="One strong colour signal per row" icon="palette">
+    Colour the field worth scanning; render the rest quiet.
+  </Card>
+  <Card title="The common case is unmarked" icon="minus">
+    A workflow's `act` disposition gets **no pill** precisely because it is thirteen rows in sixteen.
+    **Amber means something only while it is rare.**
+  </Card>
+  <Card title="At most one coloured categorical dimension" icon="table-columns">
+    Where disposition is coloured, owner team goes neutral.
+  </Card>
+  <Card title="A column of dashes beats a column of badges" icon="ellipsis">
+    **Empty space is a feature.**
+  </Card>
+</CardGroup>
+
+## Two encodings that are not colour
+
+<AccordionGroup>
+  <Accordion title="Priority is ordinal, so it is encoded ordinally" icon="arrow-up-1-9">
+    Priority is a **rank**. Colour is a **category**. Encoding a rank as a category loses the ordering
+    and adds a hue budget for nothing.
+
+    Counts, priorities and volumes are **right-aligned** and set at `12.5/500`–`600`. Alignment does
+    the work that tabular figures used to.
+  </Accordion>
+  <Accordion title="Severity takes the row's left edge, never a pill" icon="border-left">
+    A critical delivery gets a 2px left border and the subject reference at heavier weight.
+
+    Because the left edge is already taken by severity, **selection drops its accent bar** on delivery
+    tables. Two things competing for one edge is how a signal stops being a signal.
+  </Accordion>
+</AccordionGroup>
+
+## Global resources get a distinct treatment
+
+Destinations, vendor credentials and publishers are separately-granted resources whose holder is
+effectively holding production credentials.
+
+<Note>
+  They carry a visual treatment of their own — so *"this is a global resource"* is never something a
+  person has to remember from a permissions table.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="The signal path" icon="chart-simple" href="/design/signal-path">
+    The one element that is unique to this product.
+  </Card>
+  <Card title="Six patterns" icon="shapes" href="/design/patterns">
+    Every screen is built from one of six shapes.
+  </Card>
+</CardGroup>

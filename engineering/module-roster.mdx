@@ -1,0 +1,131 @@
+---
+title: "Module roster"
+description: "Eight modules, their schemas, their tables, and the two deliberately absent"
+icon: "cubes"
+mode: "wide"
+---
+
+## The eight
+
+| # | Module | Purpose | Answers |
+| --- | --- | --- | --- |
+| 1 | **`directory`** | People, teams, and **who is responsible for what**. A projection of the company identity provider, plus responsibility rules that are ours | "Who should do this / be told?" |
+| 2 | **`automation`** | Event ingress (Redis Streams **and** HTTP), workflow matching, an ordered list of independent actions | "This happened — what is the immediate reaction?" |
+| 3 | **`process`** | Versioned process definitions and stateful instances. Steps automatic, human, waiting, branching, or parallel | "Where is this case, and why is it stuck?" |
+| 4 | **`task`** | A unit of human work: assignment, lifecycle, SLA, form, comments, attachments | "What do I have to do today?" |
+| 5 | **`notification`** | Last mile to a person: recipient resolution, channel policy, hand-off to the notifier driver | "Tell the right people, on the right channel" |
+| 6 | **`integration`** | Connectors to external providers and receivers for their callbacks. **The only outbound door** | "Call the vendor — without the caller knowing which vendor" |
+| 7 | **`reporting`** | Versioned report definitions, runs, generated artifacts, and proof of submission | "Produce the report and prove it was filed" |
+| 8 | **`audit`** | Query and export of the immutable activity record. **Read-only** | "Who changed what, when, and what did it look like before?" |
+
+## Two modules deliberately absent
+
+<AccordionGroup>
+  <Accordion title="No workflow module" icon="ban">
+    A workflow **is** `automation`'s core concept — the ordered action list bound to a matched event.
+
+    Splitting them would put the trigger and the thing it triggers on opposite sides of a boundary for
+    zero benefit.
+
+    `process` is a different thing entirely: it is stateful and long-running, and it is a separate
+    module for exactly that reason.
+  </Accordion>
+  <Accordion title="No document module" icon="ban">
+    Artifact storage is a **platform capability**, not a domain. `reporting` writes generated reports
+    through it; `task` attaches evidence through it.
+
+    A module would have forced `task → reporting` — **a dependency whose name lies about what it is
+    for**.
+
+    Retention and legal hold live with the capability. If artifact policy ever grows a domain of its
+    own, it becomes module nine.
+  </Accordion>
+</AccordionGroup>
+
+## What each module owns
+
+| Module | Schema | Principal tables | Publishes? |
+| --- | --- | --- | --- |
+| `directory` | `directory` | `persons`, `teams`, `team_members`, `responsibility_roles`, `responsibility_rules`, `responsibility_assignments`, `business_calendars`, `calendar_holidays`, `outbox` | yes |
+| `automation` | `automation` | `publishers`, `stream_subscriptions`, `event_types`, **`subject_types`**, `record_types`, `workflows`, `workflow_actions`, **`event_keys`**, `ingested_events`, `action_executions`, **`action_execution_keys`**, `records`, `outbox` | yes |
+| `process` | `process` | `process_definitions`, `process_definition_versions`, `process_instances`, `process_steps`, `process_signals`, `process_timers`, `outbox` | yes |
+| `task` | `task` | `task_types`, `tasks`, `task_state_changes`, `task_comments`, `task_attachments`, `outbox` | yes |
+| `notification` | `notification` | `deliveries`, **`delivery_keys`**, `channel_policies`, `payload_policies`, `outbox` | yes |
+| `integration` | `integration` | `providers`, `provider_credentials`, `capability_bindings`, `destinations`, `invocations`, **`invocation_keys`**, `callbacks`, `verified_links`, `outbox` | yes |
+| `reporting` | `reporting` | `report_definitions`, `report_definition_versions`, `report_facts`, `report_runs`, `report_submissions`, `outbox` | yes |
+| `audit` | `audit` | `audit_entries`, `audit_seals`, `retention_policies`, `legal_holds` | **no — and therefore no outbox** |
+| *(platform)* | `platform` | `artifacts`, `artifact_retentions`, `subject_keys`, `casbin_rule`, `casbin_policy_version` | n/a |
+
+## The "publishes" column is load-bearing
+
+<Note>
+  **It is derivable, and the derivation is checkable.**
+
+  A module that publishes an event must own an `outbox` — the hand-off is durable on both legs, and
+  the alternative (writing into somebody else's transaction) is forbidden.
+
+  So the column is not decoration. `directory` publishes three events and **had no outbox in an
+  earlier version of this table**, which meant its responsibility-change event was either lost on a
+  crash or written inside another module's transaction.
+
+  `audit` is the only `no`, and that is the same fact as its un-extractability, stated from the
+  storage side.
+</Note>
+
+The **bolded** tables exist because a partitioned table cannot carry the unique constraint its module
+depends on. That is a rule, not three one-offs — see [the data
+model](/engineering/platform/data-model).
+
+## Reading order for the module specifications
+
+Two are worth reading before the rest, because everything else is shaped around them:
+
+<CardGroup cols={2}>
+  <Card title="automation" icon="bolt" href="/engineering/modules/automation">
+    The event contract it implements is the platform's central contract, and both ingress doors feed
+    one identical matcher.
+  </Card>
+  <Card title="integration" icon="plug" href="/engineering/modules/integration">
+    Being the sole egress point is why no other module holds a credential or an SSRF guard.
+  </Card>
+</CardGroup>
+
+## Adding a ninth module
+
+A ninth module is **one new module plus one registry line**, with existing modules untouched. That
+property is the point of the boundary rules, not a happy accident.
+
+<Steps>
+  <Step title="Create the module with the canonical skeleton">
+    `client/` exporting the contract, `internal/` for everything else, a module file exporting **only
+    the client token**.
+  </Step>
+  <Step title="Add one line to the registry">
+    That is the whole wiring.
+  </Step>
+  <Step title="File its document">
+    In the module index, so it is reachable from the root specification. A structural check fails
+    otherwise.
+  </Step>
+  <Step title="Add it to the roster">
+    A different check fails on any table bound in the design whose module is absent from the roster.
+  </Step>
+</Steps>
+
+<Note>
+  The dependency rules are **pattern-based**, so a new module is governed the moment it is created. A
+  boundary that has to be registered by hand is a boundary that will be forgotten.
+</Note>
+
+## Every module, one page each
+
+<CardGroup cols={4}>
+  <Card title="directory" icon="address-book" href="/engineering/modules/directory" />
+  <Card title="automation" icon="bolt" href="/engineering/modules/automation" />
+  <Card title="process" icon="diagram-project" href="/engineering/modules/process" />
+  <Card title="task" icon="list-check" href="/engineering/modules/task" />
+  <Card title="notification" icon="bell" href="/engineering/modules/notification" />
+  <Card title="integration" icon="plug" href="/engineering/modules/integration" />
+  <Card title="reporting" icon="file-invoice" href="/engineering/modules/reporting" />
+  <Card title="audit" icon="shield-check" href="/engineering/modules/audit" />
+</CardGroup>

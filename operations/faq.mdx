@@ -1,0 +1,137 @@
+---
+title: "Operations questions"
+description: "What people ask once they have seen the screens"
+icon: "circle-question"
+---
+
+<AccordionGroup>
+  <Accordion title="Do I still get chat notifications?" icon="comment">
+    Yes, if that is how your channel policy is configured. Chat remains a perfectly good
+    **destination**.
+
+    What changes is that chat is no longer where the **work** lives. If you miss a message, delete it,
+    or are on leave, the task is still there with its deadline still running.
+  </Accordion>
+
+  <Accordion title="What if I'm on leave and work is assigned to me?" icon="plane">
+    The SLA timer fires and the work **escalates to the fallback in the responsibility chain**. It
+    does not sit unread until you return.
+
+    If you are deactivated upstream in the company directory, the person projection picks that up and
+    you stop receiving new work with no manual step from anyone.
+  </Accordion>
+
+  <Accordion title="Can I reassign a task to someone else?" icon="user-pen">
+    Yes, subject to your permissions — and the reassignment is recorded on the task's activity with
+    who did it and when.
+
+    The one exception is a four-eyes step: the engine excludes specific people by design, and that
+    exclusion is not something a reassignment can route around. An attempt is recorded as a **rejected
+    action**, not silently ignored.
+  </Accordion>
+
+  <Accordion title="Why can't I see another team's queue?" icon="lock">
+    A queue is the main **permission scope**. You hold permissions inside your queues and not inside
+    others'.
+
+    This is enforced on the server, not by hiding buttons — the interface mirrors your permissions so
+    navigation makes sense, but a hidden control is never treated as a permission by itself.
+
+    If you genuinely need access, that is a grant, and grants are authored in the company's central
+    auth service — not in this product.
+  </Accordion>
+
+  <Accordion title="Something is in Attention that isn't my job. What do I do?" icon="triangle-exclamation">
+    Attention shows everything that needs *a* person, not everything that needs *you*. Three of the
+    common rows belong elsewhere:
+
+    | Row | Belongs to |
+    | --- | --- |
+    | `unmapped` — nobody configured a reaction | A configurator |
+    | `dead` — an automated step exhausted its retries | An engineer or an admin |
+    | `no_recipient` — the rules resolved to nobody | Whoever owns the responsibility rules for that domain |
+
+    Every row navigates to the screen that owns it, and that screen has the right context and the
+    right people.
+  </Accordion>
+
+  <Accordion title="A deadline is wrong for this kind of work. Can it be changed?" icon="clock">
+    Yes, and it does not need a deploy. SLAs live on the **task type**, which is configuration.
+
+    Changing it produces an audit entry with the editor's name and a before/after diff — because
+    changing a compliance deadline is a consequential act, not a preference.
+
+    Existing tasks keep the deadline they were created with. New ones get the new one.
+  </Accordion>
+
+  <Accordion title="Can I undo something?" icon="rotate-left">
+    Not automatically, and that is deliberate.
+
+    **Compensation after a human has been told something is fiction.** There is no reverse-execution
+    engine. Where a step needs to be undone, it is modelled as an **explicit compensating step** —
+    visible in the case like any other step, with an owner and a record.
+
+    An automatic "undo" that sends a second message reversing the first is not a rollback; it is two
+    events, and pretending otherwise makes the history harder to read.
+  </Accordion>
+
+  <Accordion title="Why is a notification amber instead of red?" icon="circle-half-stroke">
+    Amber means the action **completed** and reached **nobody**.
+
+    Red would send you looking for an outage. Green would be a lie. Amber says the thing you actually
+    need to know, and it usually points at a gap in the responsibility rules rather than a broken
+    integration.
+  </Accordion>
+
+  <Accordion title="The same event seems to have happened twice. Which one is real?" icon="clone">
+    Both are real arrivals; only one produced work.
+
+    Events are de-duplicated by an occurrence id. A redelivery is marked `duplicate` and dropped, so
+    **a fact becomes work exactly once** however many times it was delivered.
+
+    If you see two rows with **different** occurrence ids, they are two genuinely different
+    occurrences — for example, an approve → reject → approve sequence on one record is three events,
+    not one.
+  </Accordion>
+
+  <Accordion title="Why does a case say it's waiting when nothing is happening?" icon="hourglass">
+    That is the honest state. A case can be waiting on a person, on a customer document, or on a
+    vendor callback — and the case names which.
+
+    Every wait has a **timer armed**: a reminder, then an escalation, then a hard deadline. Nothing
+    waits indefinitely in silence.
+
+    There is even a periodic guard looking for the pathological case — *waiting with no future timer*
+    — because a case waiting on something that will never arrive never fails, so nothing would alert.
+  </Accordion>
+
+  <Accordion title="Who can see the work I did?" icon="eye">
+    Anyone with permission on that queue, plus anyone with audit read access.
+
+    Your actions are recorded permanently with your name, the time, and the before/after state — not
+    because you remembered to note it, but because the record is written inside the same transaction
+    as the change.
+
+    **This applies to denied attempts too.** A permission you did not have, or a four-eyes rule you
+    tripped, is itself recorded.
+  </Accordion>
+
+  <Accordion title="When can I actually use this?" icon="calendar">
+    There is no running system today — this is a design.
+
+    Operations feels the change most at **Phase 2**, when human work gets an owner, an SLA and a
+    history. Phase 1 comes first and replaces the scattered chat calls; Phase 0 before it collects
+    events without reacting to them, so you will not see anything during it.
+
+    See the [roadmap](/overview/roadmap) for what each phase makes visible.
+  </Accordion>
+</AccordionGroup>
+
+<CardGroup cols={2}>
+  <Card title="Compliance questions" icon="scale-balanced" href="/compliance/faq">
+    The evidence side of the same work.
+  </Card>
+  <Card title="General questions" icon="circle-question" href="/overview/faq">
+    The objections raised in every first review.
+  </Card>
+</CardGroup>

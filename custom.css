@@ -1,0 +1,130 @@
+/* ---------------------------------------------------------------------------
+   workspace-ops — documentation design tokens
+
+   These are the product's own `cu/` tokens (design/design-system.md §10), so a
+   diagram on this site is drawn in the same language as the product it documents.
+
+   Tailwind arbitrary values are not supported by Mintlify, which is why the exact
+   hexes live here as custom properties rather than inline in a className.
+
+   The colour law holds here as it does in the product:
+     - the accent (violet) is NEVER a status
+     - status owns its own hues, consistently
+     - one strong colour signal per view
+--------------------------------------------------------------------------- */
+
+:root {
+  --wo-surface:      #FBFAFD;
+  --wo-card:         #FFFFFF;
+  --wo-hair:         #F0EFF4;
+  --wo-border:       #E7E5F0;
+  --wo-text:         #1D1B2E;
+  --wo-text-2:       #6E6B85;
+  --wo-text-3:       #757289;
+
+  --wo-accent:       #7B68EE;
+  --wo-accent-soft:  #EFECFC;
+  --wo-accent-line:  #C9C0F6;
+
+  --wo-ok-b:         #E2F4EB;
+  --wo-ok-t:         #1F8A5B;
+  --wo-info-b:       #E8EEFD;
+  --wo-info-t:       #2F6FED;
+  --wo-warn-b:       #FBF0D8;
+  --wo-warn-t:       #B0781A;
+  --wo-neu-b:        #EFEDF4;
+  --wo-neu-t:        #6E6B85;
+}
+
+.dark {
+  --wo-surface:      #16161C;
+  --wo-card:         #1B1B23;
+  --wo-hair:         #26262F;
+  --wo-border:       #32323E;
+  --wo-text:         #ECEBF2;
+  --wo-text-2:       #A5A2B8;
+  --wo-text-3:       #8B8899;
+
+  --wo-accent:       #9F90F3;
+  --wo-accent-soft:  #262039;
+  --wo-accent-line:  #4A3F7A;
+
+  --wo-ok-b:         #16301F;
+  --wo-ok-t:         #5FCB96;
+  --wo-info-b:       #172239;
+  --wo-info-t:       #7BA5F5;
+  --wo-warn-b:       #322611;
+  --wo-warn-t:       #D9A64A;
+  --wo-neu-b:        #26262F;
+  --wo-neu-t:        #A5A2B8;
+}
+
+/* Every var() used inside snippets/*.jsx also carries an inline light-mode
+   fallback, so a diagram still renders correctly if this file is ever not
+   picked up. This file then supplies dark mode and the figure chrome, not
+   the difference between readable and black. */
+
+/* --- figure shell ------------------------------------------------------- */
+
+.wo-fig {
+  margin: 1.75rem 0;
+  border: 1px solid var(--wo-border);
+  border-radius: 10px;
+  background: var(--wo-card);
+  overflow: hidden;
+}
+
+.wo-fig__scroll {
+  overflow-x: auto;
+  padding: 4px;
+}
+
+/* The diagram stops shrinking here and scrolls instead — a graph squeezed
+   below this width stops being readable, and a horizontal scroll is honest
+   about that where a silent reflow is not. */
+.wo-fig__svg {
+  display: block;
+  width: 100%;
+  min-width: 720px;
+  height: auto;
+}
+
+.wo-fig__caption {
+  border-top: 1px solid var(--wo-hair);
+  background: var(--wo-surface);
+  padding: 9px 16px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--wo-text-2);
+}
+
+.wo-fig__caption b { color: var(--wo-text); font-weight: 600; }
+
+/* --- legend ------------------------------------------------------------- */
+
+.wo-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  align-items: center;
+  border-top: 1px solid var(--wo-hair);
+  background: var(--wo-surface);
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--wo-text-2);
+}
+
+.wo-legend__item { display: inline-flex; align-items: center; gap: 7px; }
+
+.wo-legend__rule { width: 26px; height: 0; border-top: 1.5px solid var(--wo-text-3); }
+.wo-legend__rule--dashed { border-top-style: dashed; }
+.wo-legend__swatch {
+  width: 13px; height: 13px; border-radius: 4px;
+  border: 1px solid var(--wo-border); background: var(--wo-card);
+}
+.wo-legend__swatch--accent {
+  background: var(--wo-accent-soft); border-color: var(--wo-accent);
+}
+.wo-legend__swatch--muted {
+  background: var(--wo-neu-b); border-color: var(--wo-border); border-style: dashed;
+}

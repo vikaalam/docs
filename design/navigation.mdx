@@ -1,0 +1,156 @@
+---
+title: "The app shell"
+description: "Sidebar, topbar, command palette, and the screen-to-module map"
+icon: "window-maximize"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/my-tasks-compliance.webp"
+  alt="The app shell — sidebar, topbar, page header, and content"
+  noZoom
+/>
+
+## Four groups, by intent
+
+```
+WORK          Attention · My tasks · Queues · Cases
+SIGNALS       Events · Workflows · Event types · Subject types · Record types
+              · Publishers · Streams
+CONFIGURE     Process definitions · Task types · Responsibility · People & teams
+              · Channels · Providers · Destinations · Report definitions
+RECORDS       Audit · Deliveries · Invocations · Report runs · Erasure
+```
+
+<Warning>
+  **The eight modules are a code boundary, not a menu.**
+
+  They exist so one module can be extracted without touching another, and so a dependency rule can
+  fail a build. **None of that is a user's concern.**
+</Warning>
+
+## The screen → module map
+
+Screens are still **owned** by exactly one module. The ownership decides the API, the permission
+resource, and which document specifies the screen.
+
+| Group | Screen | Route | Owning module |
+| --- | --- | --- | --- |
+| Work | Attention | `/attention` | *cross-module (design)* |
+| Work | My tasks | `/tasks/mine` | `task` |
+| Work | Queues | `/tasks/queues` | `task` |
+| Work | Cases | `/process/instances` | `process` |
+| Signals | Events | `/automation/events` | `automation` |
+| Signals | Workflows | `/automation/workflows` | `automation` |
+| Signals | Event types | `/automation/event-types` | `automation` |
+| Signals | Subject types | `/automation/subject-types` | `automation` |
+| Signals | Record types | `/automation/record-types` | `automation` |
+| Signals | Publishers | `/automation/publishers` | `automation` |
+| Signals | Streams | `/automation/streams` | `automation` |
+| Configure | Process definitions | `/process/definitions` | `process` |
+| Configure | Task types | `/task/types` | `task` |
+| Configure | Responsibility | `/directory/responsibility` | `directory` |
+| Configure | People & teams | `/directory/people`, `/directory/teams` | `directory` |
+| Configure | Channels | `/notification/policies` | `notification` |
+| Configure | Providers | `/integration/providers` | `integration` |
+| Configure | Destinations | `/integration/destinations` | `integration` |
+| Configure | Report definitions | `/reporting/definitions` | `reporting` |
+| Records | Audit | `/audit` | `audit` |
+| Records | Deliveries | `/notification/deliveries` | `notification` |
+| Records | Invocations | `/integration/invocations` | `integration` |
+| Records | Report runs | `/reporting/runs` | `reporting` |
+| Records | Erasure | `/audit/erasure` | `audit` |
+
+<Note>
+  **This map is the mitigation for the risk the grouping creates** — that someone reads the sidebar as
+  the architecture.
+
+  It is also mechanically checked: a check fails on any screen document the map never links, and its
+  companion fails on any map link pointing at a document that does not exist.
+</Note>
+
+### The one screen owned by no module
+
+**Attention** is cross-module by design. It aggregates the queue promises of six modules and owns
+none of them, so it is specified with the patterns rather than with a module.
+
+<Warning>
+  **The cost recorded with that decision: the screen must never grow logic of its own.**
+</Warning>
+
+### There is no permissions screen, and that is correct
+
+<Note>
+  Every other item of configuration has a screen. Roles and grants do not — because they are **authored
+  in the estate's central auth service**, not here.
+
+  A configuration row with no screen is normally a defect. Here it was **the architecture pointing at a
+  service that did not exist yet.** It exists now, and the absence is correct.
+</Note>
+
+## What is on screen
+
+| Region | Contents |
+| --- | --- |
+| **Sidebar** | 240px, the four groups, a section label per group, the active item filled with the accent |
+| **Topbar** | Breadcrumb, search, the person's avatar |
+| **Page header** | Title, subtitle, and the primary action |
+| **Content** | The pattern the screen is |
+
+### The primary action is not always "create"
+
+<Note>
+  The workflows screen's primary action is **"browse unmapped events"**, not *"create workflow"*.
+
+  **A workflow is only ever built from a shape that already arrived.** One written against an imagined
+  envelope matches nothing, and the failure is silent.
+</Note>
+
+## The command palette
+
+`⌘K` / `Ctrl+K`. Navigation and search in one place, because forty-seven screens is more than a
+sidebar should be asked to make findable.
+
+## Keyboard model
+
+Desktop-first, and the operator patterns are the ones that matter: moving through a queue, opening an
+item, deciding, and moving on without reaching for a mouse.
+
+## Global states
+
+Every screen specifies its **empty**, **error**, and **denied** state — and they are three different
+things.
+
+| State | Says |
+| --- | --- |
+| **Empty** | There is nothing here, and *why* — often naming the screen that would create something |
+| **Error** | Something failed, and what to do |
+| **Denied** | You do not hold this permission. **Not** disguised as empty |
+
+<Warning>
+  **A denied state disguised as an empty one is how a permissions problem becomes a support ticket
+  about missing data.**
+</Warning>
+
+<Note>
+  Two screens name **each other** in their empty states — the record-types screen and the event-types
+  screen — because the configuration rule that connects them is exactly what an empty one is missing.
+</Note>
+
+## Loading is always a client fetch
+
+There is no server-rendered screen, so every loading state is a client fetch and is designed as one.
+
+<Note>
+  That follows from the application being a single-page app — **not** from the framework. It is one of
+  only two consequences that do.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Six patterns" icon="shapes" href="/design/patterns">
+    What sits inside the shell.
+  </Card>
+  <Card title="The gallery" icon="images" href="/design/screens/work">
+    All 47 screens, grouped the way the sidebar groups them.
+  </Card>
+</CardGroup>

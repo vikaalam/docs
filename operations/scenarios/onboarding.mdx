@@ -1,0 +1,155 @@
+---
+title: "Onboarding a customer"
+description: "One event, three workflows, all eight modules, every step kind"
+icon: "user-plus"
+mode: "wide"
+---
+
+This is the flagship walkthrough: the one scenario that exercises **every module, every step kind,
+and every action type** in a single run.
+
+## The trigger
+
+One fact, from one source system: **`customer.account.created`**.
+
+That is all the publisher says. It does not say who should review it, on what channel, at what
+severity, or by when. Those are decisions, and decisions belong here.
+
+## Three workflows match, and all three run
+
+<Note>
+  A single event may match several workflows, and **every match executes**. Concerns attach
+  independently — a compliance record, an operations notification, and a case can each be configured
+  by a different team without any of them knowing the others exist.
+</Note>
+
+```
+customer.account.created
+  ├─ workflow "onboarding-record"     priority 10  → record        (keep the fact, typed and retained)
+  ├─ workflow "onboarding-notice"     priority 20  → notify        (tell the responsible team)
+  └─ workflow "onboarding-case"       priority 30  → start_process (open the multi-step case)
+```
+
+Priority orders them — it does not select. Lower number runs first, so a replay produces the same
+order.
+
+## The case
+
+<Steps>
+  <Step title="Step 1 — automatic — identity.verify" icon="id-card">
+    A **logical capability**, not a vendor. The case asks for `identity.verify`; a configuration row
+    maps that to whichever provider this deployment uses.
+
+    Some providers answer immediately. Some answer minutes later by callback. Either way, the case
+    waits and resumes — the return path is the same.
+  </Step>
+  <Step title="Step 2 — automatic — screening.sanctions" icon="shield">
+    Another logical capability. Same rule: **the definition names no vendor.**
+
+    Replacing the screening vendor later is one binding row plus one connector file, and **no process
+    definition changes.** That matters because definitions are versioned and long-lived — a vendor
+    name inside one would outlive the vendor.
+  </Step>
+  <Step title="Step 3 — human — compliance review" icon="user-check">
+    A task in the compliance queue, with an owner resolved from responsibility rules, an SLA, and a
+    form.
+
+    The reviewer sees the identity result, the screening result, and the original facts — not a
+    rendered sentence about them.
+  </Step>
+  <Step title="Step 4 — human — operations approval" icon="thumbs-up">
+    A second task, a different queue, a different role.
+  </Step>
+  <Step title="Step 5 — automatic — generate and submit the report" icon="file-invoice">
+    A reproducible report run, an artifact, a submission to a **named destination**, and a receipt
+    retained as proof.
+
+    The run is **not done** until the receipt comes back.
+  </Step>
+</Steps>
+
+## What each layer contributes
+
+This is the clearest illustration of why the three layers are separate.
+
+| Layer | Does | Could the others? |
+| --- | --- | --- |
+| **`automation`** (reflex) | Matches the event, fires three workflows, opens the case | No — it is stateless, and cannot remember that step 2 finished while step 3 waits |
+| **`process`** (deliberation) | Remembers where the case is, survives restarts, arms timers, pins its version | No — it has no concept of a queue, a due date, or a comment thread |
+| **`task`** (work) | Gives a person an owner, a deadline, a form, and a history | No — it does not know cases exist, which is exactly why it also works standalone |
+
+## Why the case survives everything
+
+<AccordionGroup>
+  <Accordion title="A reviewer goes on leave mid-case" icon="plane">
+    The person projection deactivates them upstream, the SLA timer fires, and the work **escalates to
+    the fallback in the responsibility chain**. Nothing is orphaned and nothing needs a manual
+    reassignment sweep.
+  </Accordion>
+  <Accordion title="The platform restarts" icon="power-off">
+    Events remain in the stream un-acknowledged and are processed on recovery. Case state is in the
+    database, not in memory. A consumer that died after reading but before acknowledging is recovered
+    by a periodic claim.
+  </Accordion>
+  <Accordion title="A vendor is down" icon="plug-circle-xmark">
+    The invocation retries with backoff. Past its budget it becomes `dead` and the step `failed` —
+    **visible**, in the same queue as everything else that needs a person. Ingest is unaffected.
+  </Accordion>
+  <Accordion title="Someone edits the process definition tomorrow" icon="pen">
+    This case keeps the version it started on. Old versions are never deleted.
+
+    A regulated case is auditable **against the rules that were actually in force when it started** —
+    which is the only version an auditor cares about.
+  </Accordion>
+  <Accordion title="A provider callback never arrives" icon="clock">
+    The step timer fires → escalation notification → hard deadline → the step expires, and the case
+    records that it did. It does not wait forever in silence.
+  </Accordion>
+</AccordionGroup>
+
+## What is written, and where
+
+| Store | Gets | For how long |
+| --- | --- | --- |
+| The **ingest history** | Every event received, verbatim, whatever its outcome | Months |
+| A **typed record** | Only the fields the record type declares, redactable | Per record type — years if the obligation says so |
+| **Report facts** | Facts shaped for the defined report | Per report retention |
+| The **audit trail** | Every actor-attributed change to the platform's own state, with before and after | Years, subject to legal hold |
+
+<Warning>
+  **These four are all called "the log" and they are not the same thing.** Conflating them is the most
+  likely cause of a wrong answer during an incident review.
+
+  In particular, the audit trail is **not** the event log. It answers *"who changed this workflow,
+  approved this case, downloaded this artifact"* — an external system's fact is not a change to our
+  state and does not belong there.
+</Warning>
+
+## What is deliberately *not* written
+
+- **No customer record.** The subject stays an opaque reference. No customer table, ever.
+- **No copy of the source system's row.** The facts the publisher sent are what is kept.
+- **No vendor name in the process definition.** Only the logical capability.
+
+## What this scenario proves
+
+<CardGroup cols={2}>
+  <Card title="All eight modules in one run" icon="cubes">
+    `automation` · `process` · `task` · `directory` · `notification` · `integration` · `reporting` ·
+    `audit` — every one of them, doing exactly one job.
+  </Card>
+  <Card title="Every step kind" icon="list-ol">
+    Automatic, human, waiting, branching, parallel — and the return loop that ties them together.
+  </Card>
+  <Card title="Vendor neutrality is real, not aspirational" icon="right-left">
+    Two vendor calls, neither named in the definition. Swapping either is configuration.
+  </Card>
+  <Card title="Nothing here required a deploy" icon="rocket">
+    Event types, workflows, a process definition, task types, responsibility rules, channel policies,
+    a report definition. All configuration.
+  </Card>
+</CardGroup>
+
+<Card title="Next scenario: nothing happened" icon="ghost" href="/operations/scenarios/nothing-happened">
+  The most important scenario — an event arrives and nobody is told. How you find out.
+</Card>

@@ -1,0 +1,119 @@
+---
+title: "What changes for you"
+description: "For the operations team — no architecture, just what your work looks like"
+icon: "list-check"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/ops-attention.webp"
+  alt="Ops · Attention — the Operations landing screen"
+  noZoom
+/>
+
+This tab is written for the people who **do the work**: analysts, reviewers, approvers, and the
+leads who watch their queues. There is no architecture here. Where a mechanism genuinely matters,
+there is a link to it and nothing more.
+
+## The short version
+
+| Today | With `workspace-ops` |
+| --- | --- |
+| Work arrives as a chat message you might scroll past | Work arrives as a **task with your name on it and a deadline** |
+| A message tells you a review is needed | It tells you **why**, with the values that triggered it |
+| You open four systems to find out where a case is | **One screen** shows the case, its position, and what it is waiting on |
+| Nobody knows how many items are waiting on your team | The queue depth is a number on a screen |
+| A skipped step leaves no trace | A skipped step is a task in a state, with a history |
+| "Did anyone get told about this?" is unanswerable | It is a row, with an outcome |
+| A permanent failure is silent | A permanent failure is a **visible item that someone owns** |
+
+## The one promise
+
+<Note>
+  **Nothing that needed a person is ever dropped quietly.**
+
+  If an event finds no reaction, if a notification resolves to nobody, if an automated step exhausts
+  its retries — it becomes a **visible item in a queue**. Not a log line. Not a swallowed error. An
+  item, with an owner.
+</Note>
+
+That is the promise the whole system is measured against, and it is the one you will feel most.
+
+## Four screens do almost everything
+
+<CardGroup cols={2}>
+  <Card title="Attention" icon="triangle-exclamation" href="/operations/attention">
+    The first screen you open. Everything that needs a person, from every part of the platform, in
+    one list. It aggregates and owns nothing.
+  </Card>
+  <Card title="My tasks" icon="list-check" href="/operations/my-tasks">
+    Your work, and only yours — grouped by the workflow that created each task. Also available as a board.
+  </Card>
+  <Card title="Queues" icon="users" href="/operations/queues">
+    Your team's shared pool — depth, unassigned work, SLA health. What a lead watches.
+  </Card>
+  <Card title="Cases" icon="diagram-project" href="/operations/cases">
+    A long-running case: where it is, which step is running, and **why it is stuck**.
+  </Card>
+</CardGroup>
+
+## What you will not have to do any more
+
+<AccordionGroup>
+  <Accordion title="Ask someone which channel a notification went to" icon="comment-slash">
+    Every notification is a row with a recipient, a channel, an outcome, and a link back to the event
+    that caused it. If it went nowhere, that is on the row too — as `no_recipient`, not as a green
+    tick.
+  </Accordion>
+  <Accordion title="Re-read a chat thread to find whether a step was done" icon="clock-rotate-left">
+    A task has a state and a state history. "Was this reviewed?" is a status, not an archaeology
+    exercise.
+
+    This replaces a genuinely fragile pattern: in the audited estate, **14 of 21 "notifications" in
+    one domain were emoji reactions** added to an earlier chat message to mark an item done — found by
+    re-reading the channel and string-matching the message text.
+  </Accordion>
+  <Accordion title="Guess why something needs review" icon="question">
+    The reason travels with the work. Where four different automatic checks can fail, the task says
+    **which one** failed, with the values.
+
+    In the starting condition, all four produced one identical message, and the triggering reason was
+    computed, persisted to the database, and then **left out of the message**.
+  </Accordion>
+  <Accordion title="Find the record the message was about" icon="magnifying-glass">
+    Work links to its subject. In the starting condition, a message carried a transaction id but not
+    the row id, so a recipient could not navigate from the message to the record without searching.
+  </Accordion>
+</AccordionGroup>
+
+## What stays the same
+
+Being honest about this matters more than selling the change.
+
+- **You still do the same work.** Reviewing, approving, investigating, escalating. The platform
+  routes it, records it, and holds the clock — it does not do it.
+- **Your judgement is still the product.** Nothing here decides a compliance outcome for you.
+- **Chat still exists.** Notifications can still land in chat. What changes is that chat is a
+  *destination*, not the place work lives.
+
+## Where to go next
+
+<Card title="Your four subject areas" icon="layer-group" href="/operations/subjects">
+  Deposits, parties, virtual accounts and instructions — and the one rule all four obey: **none of
+  them lists the thing it is named after.**
+</Card>
+
+<CardGroup cols={2}>
+  <Card title="A day in the life" icon="sun" href="/operations/day-in-the-life">
+    Morning to evening, screen by screen.
+  </Card>
+  <Card title="Words you will see" icon="book-open" href="/operations/vocabulary">
+    The handful of terms the interface uses in a specific sense.
+  </Card>
+  <Card title="Worked scenario: a deposit nobody can attribute" icon="money-bill-transfer" href="/operations/scenarios/deposit-escalation">
+    Two escalation tiers, two teams, one thread.
+  </Card>
+  <Card title="Common questions" icon="circle-question" href="/operations/faq">
+    Including the ones that start with "but what if".
+  </Card>
+</CardGroup>

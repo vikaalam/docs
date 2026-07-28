@@ -1,0 +1,258 @@
+---
+title: "audit"
+description: "The immutable record — read-only, and deliberately un-extractable"
+icon: "shield-check"
+mode: "wide"
+---
+
+> **The immutable record of who changed what, when, and what it looked like before.**
+> This module only **reads**. Writing happens through the `AuditRecorder` platform capability.
+
+| | |
+| --- | --- |
+| Schema | `audit` |
+| Layer | Foundation |
+| Depends on | *nothing* |
+| Depended on by | The interface, export jobs, compliance |
+| Slice | **0 — Foundation** |
+| Extraction trigger | **None. Deliberately un-extractable** |
+
+## The inversion that makes this work
+
+<Warning>
+  Almost every audit implementation fails the same way: a module is *supposed* to call an audit
+  client, and one day it does not — a new endpoint, a background job, a fix applied in a hurry.
+
+  **An audit that is sometimes written is equivalent to no audit at all**, because its absence proves
+  nothing.
+</Warning>
+
+So the write path is **inverted**. Auditing is a **platform capability**, not a service to be called:
+
+```ts
+// capabilities/audit/audit-recorder.ts
+export abstract class AuditRecorder {
+  /** Enlists in the transaction held in request context. Throws if there is none. */
+  abstract record(entry: AuditEntry): Promise<void>;
+}
+```
+
+The module itself is **read-only**: query, export, and the tamper-evidence sealer.
+
+## Why it cannot be extracted
+
+The entry is written **inside the same transaction as the change it describes**. If the audit write
+fails, the business change rolls back.
+
+<Note>
+  That is the correct behaviour for a regulated operator, and its price is explicit: **`audit` can
+  never be extracted into a separate service** without losing the guarantee.
+
+  Recorded as a decision rather than discovered later. Every other module is extractable.
+</Note>
+
+## The screens it owns
+
+<Tabs>
+  <Tab title="Audit">
+    <img src="/images/screens/audit.webp" alt="Audit — the immutable activity record" noZoom />
+  </Tab>
+  <Tab title="Trace">
+    <img src="/images/screens/trace.webp" alt="Trace — everything under one correlation id, in order" noZoom />
+
+    Reads **exactly two** stores: audit entries and the ingest history. A store label has a vocabulary
+    of two, not four.
+  </Tab>
+  <Tab title="Resource history">
+    <img src="/images/screens/resource-history.webp" alt="Resource history — every change to one object" noZoom />
+
+    The full-screen form of the history section every other module's detail panel embeds.
+  </Tab>
+  <Tab title="Export">
+    <img src="/images/screens/audit-export.webp" alt="Audit export — scope, columns, inline confirmation" noZoom />
+  </Tab>
+  <Tab title="Integrity">
+    <img src="/images/screens/integrity.webp" alt="Integrity — what a passing check proves, and what it leaves open" noZoom />
+  </Tab>
+  <Tab title="Legal holds">
+    <img src="/images/screens/legal-holds.webp" alt="Legal holds — what is held, and since when" noZoom />
+  </Tab>
+  <Tab title="Erasure">
+    <img src="/images/screens/erasure.webp" alt="Erasure — crypto-shredding, and the refusals" noZoom />
+  </Tab>
+</Tabs>
+
+## The trace boundary
+
+<Warning>
+  A trace's composition is performed by the **caller**, not by this module.
+
+  `audit` publishes nothing and depends on nothing. Giving it a read of `automation` would create a
+  **second cross-schema read**, where the platform sanctions exactly one and names it as never a
+  precedent.
+</Warning>
+
+## Principal tables
+
+Generated from `migrations/audit/001-init.sql` — never drawn by hand.
+
+```mermaid
+erDiagram
+    audit_entries {
+        uuid id
+        timestamptz occurred_at
+        varchar actor_type
+        varchar actor_ref
+        varchar actor_display
+        varchar module
+        varchar resource_type
+        varchar resource_id
+        more 16_further_columns
+    }
+    audit_seals {
+        uuid id PK
+        timestamptz period_start
+        timestamptz period_end
+        int entry_count
+        varchar merkle_root
+        timestamptz sealed_at
+        uuid previous_seal_id FK
+        timestamptz created_at
+    }
+    retention_policies {
+        uuid id PK
+        varchar module
+        varchar resource_type
+        interval retain_for
+        boolean active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    legal_holds {
+        uuid id PK
+        jsonb scope
+        varchar reason
+        varchar placed_by
+        timestamptz placed_at
+        varchar released_by
+        timestamptz released_at
+        timestamptz created_at
+        more 1_further_columns
+    }
+    erasure_requests {
+        uuid id PK
+        varchar subject_type
+        varchar subject_ref
+        uuid subject_key_id
+        varchar status
+        varchar legal_basis
+        varchar requested_by
+        timestamptz requested_at
+        more 14_further_columns
+    }
+    audit_seals ||--o{ audit_seals : "previous_seal_id"
+    legal_holds ||--o{ erasure_requests : "blocking_hold_id"
+```
+
+<Note>
+  **This table is partitioned:** `audit_entries`.
+
+  A partitioned table **cannot carry a global unique constraint**. This schema needs no `*_keys` sibling — its uniqueness is carried by a composite primary key instead. An ER diagram cannot express either, so it is stated here.
+</Note>
+
+<Warning>
+  **No relationship line leaves this schema, and that is the boundary rule rather than an omission.** The 2 lines above are real foreign keys inside `audit`.
+
+  Bare cross-schema references — drawn nowhere, because the database does not enforce them: `subject_key_id` into `platform.subject_keys`. The audit row outlives the data it protected.
+</Warning>
+
+<Note>
+  **This is the only module that does not publish, and therefore the only one with no outbox.** That
+  is the same fact as its un-extractability, stated from the storage side.
+</Note>
+
+`audit_entries` takes a **composite primary key** because it is partitioned — the same PostgreSQL rule
+that forced the separate idempotency key tables.
+
+## Append-only is a database privilege
+
+The application's role holds `INSERT` and `SELECT` and **nothing else**. There is no code path that
+can update or delete an entry, because the privilege does not exist.
+
+A separate, more privileged credential exists only for the scheduled retention partition drop — and
+that job is itself audited.
+
+## Tamper-evidence is periodic
+
+An hourly sealer computes a Merkle root over each closed interval.
+
+<Note>
+  **A per-row hash chain was rejected** because it serialises concurrent writes for a property the
+  hourly seal already provides.
+
+  The cost is a **detection window**: a change made and reverted inside one unsealed interval leaves
+  the same evidence as no change. That is stated rather than glossed.
+</Note>
+
+Two design rules on the integrity screen follow from this:
+
+- **Never-verified renders neutral**, not red. A check that has not run is not a failed check.
+- **There is no repair action.** A tamper-evidence surface that offers to fix a discrepancy is a
+  surface that can be used to hide one.
+
+## Erasure by crypto-shredding
+
+<Warning>
+  Append-only audit and a right-to-erasure obligation cannot both be satisfied by deletion.
+
+  **Deleting audit rows** destroys the guarantee that gives the store its value. **Refusing erasure**
+  refuses a legal obligation.
+</Warning>
+
+The resolution: personal data in long-retention stores is encrypted with a **per-subject key** held in
+a platform-level registry. Erasure destroys the key.
+
+| Property | Detail |
+| --- | --- |
+| **One operation** | One update on one row — not *N* operations across *N* modules that could partially fail. A partial erasure is not an erasure |
+| **Provable** | The registry holds a version and a destruction state, so an erasure can be **proven** |
+| **Refusable** | A legal hold blocks it, and the refusal is itself audited |
+| **Uniform** | Every long-retention store carries the same key column name, so the shred path is one query |
+
+<Warning>
+  **This must be in place before the first personal data is written.** Retrofitting means re-encrypting
+  an append-only history — the one item in the design that cannot be retrofitted.
+</Warning>
+
+## The interlock defect, left visible
+
+<Warning>
+  The erasure interlock currently queries holds **by subject**. A hold scoped by **correlation id** —
+  the natural scope for a case-level hold — names no subject, so the one hold in the worked corpus
+  **would not be found by it**.
+
+  Rendered on the design as a finding rather than designed around.
+</Warning>
+
+## The one thing that commits alone
+
+A `rejected` entry commits in **its own transaction**.
+
+<Note>
+  Without that, the store is structurally incapable of doing the job it exists for: a denied permission
+  means something threw, the exception propagates, the transaction rolls back — **and takes the audit
+  entry with it.**
+
+  Safe precisely because there is no business change for it to be atomic *with*.
+
+  **An over-recorded denial is a nuisance; an unrecorded one is a hole.**
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="The audit capability" icon="lock" href="/engineering/platform/audit-capability">
+    How the write path actually works, and the wiring that still needs a spike.
+  </Card>
+  <Card title="Compliance view" icon="scale-balanced" href="/compliance/audit-trail">
+    The same material, for a non-engineering reader.
+  </Card>
+</CardGroup>

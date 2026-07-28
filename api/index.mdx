@@ -1,0 +1,123 @@
+---
+title: "The contracts"
+description: "Two machine-readable files — and an honest account of how much they are load-bearing"
+icon: "file-contract"
+mode: "wide"
+---
+
+Two contracts are published, and they are **not** the same kind of thing.
+
+<CardGroup cols={2}>
+  <Card title="The event envelope" icon="envelope" href="/api/event-envelope">
+    **A JSON Schema.** The shape a publisher tests against, on both ingress doors.
+
+    Derived from the architecture's event contract, which remains authoritative.
+  </Card>
+  <Card title="The HTTP API" icon="code" href="/api/conventions">
+    **An OpenAPI 3.1 document.** 84 paths, 92 operations, across the nine tags.
+
+    **A harvest, not a design** — see below.
+  </Card>
+</CardGroup>
+
+## The envelope is a contract. The API is a harvest.
+
+<Warning>
+  **Every path, method, parameter, default, poll interval and permission string in the OpenAPI
+  document was collected from documents that already exist.** Nothing was invented to fill a gap.
+
+  Where a document names an operation but never describes its body, the operation is emitted with an
+  explicit **`UNSPECIFIED`** note rather than a plausible schema. That note appears **101 times.**
+</Warning>
+
+That is a deliberate discipline, and it is the opposite of what an API document usually does. A
+plausible schema is indistinguishable from a specified one six months later — and this spike has no
+running code to correct it.
+
+## How thin the provenance actually is
+
+<Note>
+  **Only two paths in the entire document are named in a source that ranks above the design layer:**
+
+  - `POST /api/v1/automation/events/{eventTypeCode}` — the HTTP ingress door
+  - `POST /api/v1/integration/callbacks/{providerCode}` — the inbound provider callback
+
+  **Every other path is named only in a screen document.**
+</Note>
+
+The module specifications describe **client contracts** — the in-process interfaces one module uses
+to call another — not HTTP paths. The only routing fact fixed anywhere is the prefix rule:
+
+> The API route prefix is `/api/v1/<module>`, and the module name is derived from it for the first
+> authorization guard.
+
+<Warning>
+  **Read every operation as *design-asserted*, unless its description says otherwise.** Two of them
+  say otherwise; ninety do not.
+</Warning>
+
+## What that means for a reviewer
+
+| If you are | Treat the OpenAPI document as |
+| --- | --- |
+| Reviewing the architecture | **Evidence of what the screens require of a backend** — which is its real value |
+| Planning implementation | A starting inventory, where anything without an explicit provenance note is a proposal |
+| Writing a publisher | **Irrelevant, except for one path.** Use the [envelope schema](/api/event-envelope) instead |
+| Estimating scope | Useful for the read surface, **misleading for the write surface** — most configuration writes have no path anywhere |
+
+## By tag
+
+The nine tags mirror the eight modules plus `platform`, which is **not a module** — those paths
+belong to the shared schema and the capability report, and are tagged separately rather than filed
+under a module that does not own them.
+
+| Tag | Operations | Owns |
+| --- | --- | --- |
+| `automation` | 21 | Ingest, matching, dispatch. Both ingress doors |
+| `integration` | 15 | The only outbound door. Every credential and the SSRF guard |
+| `audit` | 13 | Read-only, except three writes: export, legal holds, erasure |
+| `reporting` | 9 | Facts, definitions, runs, submissions |
+| `task` | 9 | Owned, SLA'd human work |
+| `directory` | 8 | People, teams, calendars, and *who is responsible* |
+| `process` | 7 | Stateful, resumable cases |
+| `notification` | 5 | Category, severity, channel policy, deliveries |
+| `platform` | 5 | **Not a module** — shared schema and capability health |
+
+<Note>
+  **These counts are generated, not typed.** `sync-contracts.py` reads them out of the spec and writes
+  the API reference navigation on every sync — an earlier hand-count published here said *81 paths, 88
+  operations* and was wrong by four operations, which is precisely why it is now derived.
+</Note>
+
+<Note>
+  **`audit` having three writes at all is the exception worth noticing.** Audit entries are written by
+  a platform capability inside the caller's transaction — **never** by an HTTP call. The three writes
+  here are export, legal holds, and erasure: operations *about* the record, not entries *in* it.
+</Note>
+
+## No base URL
+
+<Warning>
+  The server is declared as `/` and nothing more.
+
+  **No host, port or public origin is stated anywhere in the spike.** The architecture's layout
+  section covers ports for the *process*, not an origin for the API — and inventing one here would
+  be exactly the kind of plausible fiction the whole document avoids.
+</Warning>
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="The event envelope" icon="envelope" href="/api/event-envelope">
+    The one contract a publisher actually tests against.
+  </Card>
+  <Card title="Conventions" icon="list-check" href="/api/conventions">
+    Authentication, the two authorization guards, and two spellings that were left unresolved.
+  </Card>
+  <Card title="What is deliberately absent" icon="ghost" href="/api/what-is-missing">
+    Six things not in the document, each for a stated reason.
+  </Card>
+  <Card title="Browse the endpoints" icon="code" href="/api/conventions">
+    All 92, in one group per tag in this tab's sidebar.
+  </Card>
+</CardGroup>

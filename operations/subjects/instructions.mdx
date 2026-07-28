@@ -1,0 +1,125 @@
+---
+title: "Instructions"
+description: "Transfers, payments and trades — and a four-eyes control that approves itself"
+icon: "right-left"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/ops-instructions.webp"
+  alt="Ops · Instructions — the work half is three absences; the signal half is the catalogue"
+  noZoom
+/>
+
+Transfers, payments and trades. The first screen built against the event catalogue measured from the
+source service.
+
+<Warning>
+  **It cannot list an instruction and cannot edit one.** No transaction table exists here.
+
+  It carries the **work** they generate and the **signals** they emit, and says exactly that in one
+  bold line under the title — *so nobody arrives expecting to approve a transfer here.*
+</Warning>
+
+## The work half is three absences
+
+And each one is **derived, not assumed**:
+
+<Note>
+  The current configuration registers 18 event types and 11 subject types — **none of them a treasury
+  one**. And **none of the 16 workflows** names a treasury instruction, transfer, payment or trade
+  type.
+
+  So **no task, no case and no approval can exist** for an instruction. Not "there are none right
+  now" — they are not currently possible.
+</Note>
+
+All three render as `—` **with the reason**, never as `0`. A zero would be a measurement, and nothing
+was measured.
+
+## The signal half is the catalogue
+
+What the source service **could** publish. Two entries carry the substance.
+
+### A four-eyes control that approves itself
+
+<Warning>
+  **One auto-approval path records the creator and the approver as the same automated actor.**
+
+  It is gated only by a feature flag, and it is **silent today** — nothing announces when it fires.
+</Warning>
+
+This is the most consequential finding on any Operations screen, and it is worth being precise about
+why:
+
+| | |
+| --- | --- |
+| **What a four-eyes control is for** | Ensuring the person who acts is not the person who approves |
+| **What this path does** | Records one automated actor as **both** |
+| **Why it is hard to notice** | It does not fail. It passes — and nothing is emitted when it does |
+
+It is the **selected row** on the screen and it owns the detail panel, which is the design saying:
+*this is the thing to look at.*
+
+<Note>
+  Compare this with the maker-checker gap the platform found in its own design and **closed**: the
+  exclusion mechanism could not exclude the person who created the item, so an explicit flag was
+  added.
+
+  That was a control that could be bypassed. **This one bypasses itself, in a running service, and
+  reports nothing.** Different problem, worse posture — and it needs a change in the source service,
+  not in this platform.
+</Note>
+
+### A funding destination can vanish with no durable record
+
+<Warning>
+  Account deletion is **readiness tier C**: nothing is written, and the identifier ceases to exist.
+
+  So a destination money could be sent to can disappear leaving nothing behind.
+</Warning>
+
+It carries a **warn** row mark and an explainer — **never a green tick** — because the platform
+cannot ingest what was never said. Closing it requires the source service to write the fact first.
+
+## What the screen refuses to show
+
+| Absent | Why |
+| --- | --- |
+| Any **subject reference** | Nothing arrived to reference |
+| Any **timestamp value** | The catalogue names a **source column**, never a value |
+| Any **amount** | Same |
+| Any **operator identity** | Same |
+
+<Note>
+  **Readiness gets no colour.** A tier is not a status, and it does not borrow the ordinal bar that
+  belongs to task priority. Two different things must not share one visual encoding.
+</Note>
+
+## One subtlety that will bite a configurator
+
+<Warning>
+  **The event-type prefix does not imply the subject.**
+
+  `treasury.trade.created` is minted for **two unrelated identifier spaces**, and the
+  `treasury.payment.*` family **splits across two more**.
+
+  So a subject type is drawn as a **column, not a row group** — because a scope written against one
+  event-type family would not select what its author expects.
+</Warning>
+
+This is the practical face of a rule stated abstractly elsewhere: one subject type must be able to
+admit two unrelated identifier regimes, and a name that reads like a family is not one.
+
+## Both findings are carried to compliance
+
+Neither of these is only an Operations concern.
+
+<CardGroup cols={2}>
+  <Card title="Honest limits" icon="triangle-exclamation" href="/compliance/limitations">
+    Where both are recorded for a compliance reader.
+  </Card>
+  <Card title="Four eyes" icon="user-check" href="/compliance/four-eyes">
+    What the control is supposed to do, and the gap the platform closed in its own design.
+  </Card>
+</CardGroup>

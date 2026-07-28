@@ -1,0 +1,179 @@
+---
+title: "API conventions"
+description: "Routing, authentication, the two authorization guards, and two collisions left unresolved"
+icon: "list-check"
+mode: "wide"
+---
+
+## The one routing fact
+
+```
+/api/v1/<module>
+```
+
+<Note>
+  **The module name is derived from the route prefix, not from a decorator.** A decorator can be
+  omitted; a route prefix cannot — which is why this prefix is load-bearing rather than tidy.
+</Note>
+
+This is also the **only** routing fact fixed anywhere in the spike above the design layer. Everything
+else about the shape of a path is design-asserted.
+
+## Authentication
+
+Bearer tokens from the company identity provider. **This platform issues no passwords.**
+
+| Property | Detail |
+| --- | --- |
+| Verification | **In-process, against the provider's JWKS** |
+| Services called on the request path | **None** — that coupling would put another system's availability under every request |
+| Identity claim read | **`email`**, not `sub` |
+
+<Warning>
+  **`sub` is an opaque provider identifier**, while every audit column in this estate stores email and
+  the person projection's external reference is the email.
+
+  So the mapping reads the **email claim**, and a token whose email claim is **absent or unverified is
+  rejected** — never defaulted to `sub`, which would silently create a second identity for one
+  person.
+</Warning>
+
+## Two guards, in order
+
+Every operator path passes both.
+
+<Steps>
+  <Step title="The module guard">
+    `module:<name>:access` — **derived from the route prefix.**
+
+    Can this principal enter this module at all?
+  </Step>
+  <Step title="The resource permission">
+    `<resource>:<action> : <scope>`
+
+    May they do **this specific thing**, within **this scope**?
+  </Step>
+</Steps>
+
+<Note>
+  **Both return `403`, and the interface renders them differently.** A module-guard rejection means
+  *you do not have this module*; a resource-guard rejection means *you have the module and not this
+  action here*.
+
+  Collapsing them in the UI is how a permissions problem becomes a support ticket about missing data.
+</Note>
+
+### Scope is the third part
+
+A compliance reviewer may read tasks within `queue:compliance` and **not** within `queue:treasury`.
+
+Scopes are declared per resource type, and the wildcard is a **distinct, separately grantable
+permission — never the default**.
+
+<Warning>
+  **An empty scope array means unscoped and visible**, not hidden. The opposite reading hides every
+  unscoped row from everyone, while looking exactly like a permissions bug.
+</Warning>
+
+### Two permission grammars, and which one the document uses
+
+<Warning>
+  The source documents write the permission string **two ways** — a spaced form
+  (`automation:event:read : domain:<d>`) and an unspaced one (`audit:entry:read:module:<name>`) —
+  **and disagree inside a single file.**
+
+  The OpenAPI document uses the **spaced** form throughout, and notes the unspaced occurrences where
+  that is the only spelling that appears.
+
+  This is recorded rather than silently normalised, because a permission string is compared literally
+  somewhere eventually.
+</Warning>
+
+## Three global resources
+
+Separately granted, because holding them is equivalent to holding production credentials.
+
+<CardGroup cols={3}>
+  <Card title="Destinations" icon="location-dot">
+    Whoever edits these decides **where data goes**.
+  </Card>
+  <Card title="Provider credentials" icon="key">
+    Whoever edits these decides **with what secret**.
+  </Card>
+  <Card title="Publishers" icon="tower-broadcast">
+    Whoever edits these decides **who may inject events**.
+  </Card>
+</CardGroup>
+
+## The two paths with real provenance
+
+Everything else in the document is named only in a screen specification. These two are not.
+
+| Path | Named in |
+| --- | --- |
+| `POST /api/v1/automation/events/{eventTypeCode}` | The architecture's ingress section, and echoed in the automation module |
+| `POST /api/v1/integration/callbacks/{providerCode}` | The integration module |
+
+<Note>
+  The ingress endpoint **exists because an event type is registered**, not because code was written.
+  Registering a row creates its endpoint immediately.
+
+  That is why **`404` (not registered)** and **`unmapped` (registered, no workflow yet)** are
+  deliberately different answers — and why they must never be collapsed into one.
+</Note>
+
+## Two spellings of one thing
+
+Both collisions survive in the source documents and are **not** silently resolved.
+
+| Collision | Emitted | Also written as |
+| --- | --- | --- |
+| The person collection | **`people`** — the owning module's spelling, and it matches the UI route | `persons` — from a different screen. The **table** is `persons`, which is likely the origin |
+| Responsibility resolution | **`POST …/responsibility/resolve`** — the owning module | `POST …/responsibility/simulate` — `simulate` is the **screen** route, not the API's |
+
+<Warning>
+  One endpoint is emitted verbatim in the *losing* spelling: `GET /api/v1/directory/persons/me`.
+
+  It is the only "me" endpoint in the spike, and no `people/me` form is written anywhere. **It is a
+  defect, not a second resource** — and it is left visible rather than quietly corrected, because
+  correcting it here would invent a path no document names.
+</Warning>
+
+## No base URL
+
+<Warning>
+  The server is declared as `/`.
+
+  **No host, port or public origin is stated anywhere.** The architecture's layout section covers
+  ports for the *process*, not an origin for the API.
+</Warning>
+
+## Pagination
+
+<Note>
+  **No pagination parameter is emitted anywhere**, because no document names one.
+
+  The only evidence in the entire spike is a rendered table footer — `1–50 of 1,284` — which fixes a
+  **page size of 50** and nothing else. No `page`, `limit`, `offset`, `cursor` or `pageSize` name
+  appears in any document.
+
+  So list operations carry the page size **as prose in their description**, and no parameter.
+  `limit` appears exactly once as a literal in a query string, and is emitted **only there**.
+</Note>
+
+## Retention, where the document states it
+
+| Store | Retention |
+| --- | --- |
+| Ingest history | **6 months** |
+| Vendor invocations | *"Short"* — **never quantified.** Its own open question |
+| Reporting | **7 years** |
+
+<CardGroup cols={2}>
+  <Card title="What is deliberately absent" icon="ghost" href="/api/what-is-missing">
+    Six things not in the document, each for a stated reason.
+  </Card>
+  <Card title="Authorization in full" icon="lock" href="/engineering/platform/authorization">
+    Where the policy is authored, and why it is not authored here.
+  </Card>
+</CardGroup>

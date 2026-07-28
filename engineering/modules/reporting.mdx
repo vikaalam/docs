@@ -1,0 +1,267 @@
+---
+title: "reporting"
+description: "Defined output with proof it was filed"
+icon: "file-invoice"
+mode: "wide"
+---
+
+> **Defined output with proof it was filed.** Versioned report definitions, reproducible runs,
+> generated artifacts, and a submission record that survives an audit.
+
+| | |
+| --- | --- |
+| Schema | `reporting` |
+| Layer | Output |
+| Depends on | `integration` (submission); the artifact-store and crypto capabilities |
+| Depended on by | `process` (automatic steps), `automation` (the `project` action), the interface |
+| Slice | **4 — Output** |
+| Extraction trigger | Report generation needs compute the API process must not host |
+
+## Why it is its own module
+
+Two things that neither `process` nor `task` should hold:
+
+<CardGroup cols={2}>
+  <Card title="Reproducibility" icon="rotate">
+    A regulatory report produced today must be reproducible next year, **byte for byte**, from the
+    definition version and the facts as they were.
+
+    That requires versioned definitions and a **frozen input set** — not a live query against tables
+    that have since changed.
+  </Card>
+  <Card title="Proof of submission" icon="receipt">
+    *"We filed it"* is not a claim, it is a record: when, to which destination, what the receipt was,
+    and which artifact was sent.
+  </Card>
+</CardGroup>
+
+<Note>
+  This module also absorbs what would otherwise have been a `document` module. Artifact **storage** is
+  a platform capability; this module is the largest producer of artifacts and the owner of report
+  retention policy.
+
+  `task` attaches evidence through the same capability **without depending on this module** — which is
+  the whole point of making artifacts a capability.
+</Note>
+
+## Why it has its own fact store
+
+`reporting` is the module that would most obviously want a cross-schema JOIN. It has `report_facts`
+instead.
+
+<Warning>
+  **A JOIN is a foreign key in disguise**, and a report built by live-querying other modules' tables
+  is a report whose numbers change when those tables change.
+
+  A frozen, purpose-shaped fact set is what makes reproducibility possible at all.
+</Warning>
+
+Facts arrive through the `project` action — because `automation` is the only stream reader, and this
+module cannot subscribe directly.
+
+## What a run carries
+
+<img
+  src="/images/screens/report-runs.webp"
+  alt="Report runs — status, definition, period, watermark, rows, checksum, duration"
+  noZoom
+/>
+
+| Field | Answers |
+| --- | --- |
+| **Definition + version** | Which report, under which rules |
+| **Period** | What window it covers |
+| **Watermark** | The point in the data the run read up to — so a re-run is comparable |
+| **Rows** | How many facts went in |
+| **Checksum** | Whether two runs of the same period produced the same output |
+| **Duration** | How long it took |
+| **Status** | Pending · running · succeeded · failed |
+
+<Note>
+  **The checksum is the reproducibility claim made checkable.** A mismatch is surfaced on the run
+  rather than discovered by comparing files by hand.
+</Note>
+
+## Runs and submissions are two tables with two enums
+
+This distinction is easy to collapse and expensive to collapse.
+
+| Table | Answers | Retention |
+| --- | --- | --- |
+| `report_runs` | Did we **produce** it, reproducibly? | Per report obligation |
+| `report_submissions` | Did we **file** it, and did they accept it? | **Years** |
+
+<Warning>
+  A run that succeeded is **not** a filing that was accepted. Merging the two into one status is how a
+  "submitted" flag comes to mean nothing.
+</Warning>
+
+## The receipt is the evidence
+
+<Warning>
+  **The stored receipt, not the pointer, is the evidence.**
+
+  A submission record retained for years that references an invocation retained for months is a proof
+  that **expires on a schedule nobody intended**.
+</Warning>
+
+## Definitions are versioned
+
+<img
+  src="/images/screens/report-definitions.webp"
+  alt="Report definitions — versioned, each with a named destination"
+  noZoom
+/>
+
+A run **pins** a definition version. Reading a filing from two years ago tells you which rules
+produced it.
+
+Destinations are **named rows** — `regulator-str-filing`, `fintrac-lvctr` — never endpoints typed
+into a field, and the destination itself is owned by `integration` as a global resource.
+
+## At-most-once filing
+
+For a regulatory filing, "probably once" is not good enough.
+
+<Steps>
+  <Step title="Mark before calling, in its own transaction">
+    So the intent survives whatever happens next.
+  </Step>
+  <Step title="Call through the single outbound door">
+    Sending an idempotency header is correct and free.
+  </Step>
+  <Step title="On uncertainty, reconcile by status query">
+    **Never blind resend.**
+  </Step>
+</Steps>
+
+<Warning>
+  We cannot impose an obligation on a third-party regulator gateway. It honours the header, ignores
+  it, or implements it differently — **and we find out during an incident.**
+
+  At-most-once is achieved on **our** side of the wire, or not at all.
+</Warning>
+
+## Principal tables
+
+Generated from `migrations/reporting/001-init.sql` — never drawn by hand.
+
+```mermaid
+erDiagram
+    report_definitions {
+        uuid id PK
+        varchar code
+        varchar name
+        varchar domain
+        varchar description
+        boolean active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    report_definition_versions {
+        uuid id PK
+        uuid definition_id FK
+        int version
+        jsonb spec
+        varchar output_format
+        varchar destination_code
+        interval retention
+        timestamptz published_at
+        more 3_further_columns
+    }
+    report_facts {
+        uuid id
+        varchar fact_type
+        timestamptz occurred_at
+        varchar subject_type
+        varchar subject_ref
+        jsonb attributes
+        uuid subject_key_id
+        text[] scopes
+        more 4_further_columns
+    }
+    report_runs {
+        uuid id PK
+        uuid definition_version_id FK
+        jsonb parameters
+        varchar idempotency_key
+        timestamptz period_start
+        timestamptz period_end
+        varchar status
+        uuid artifact_id
+        more 11_further_columns
+    }
+    report_submissions {
+        uuid id PK
+        uuid report_run_id FK
+        varchar destination_code
+        varchar status
+        uuid invocation_id
+        timestamptz submitted_at
+        timestamptz acknowledged_at
+        jsonb receipt
+        more 6_further_columns
+    }
+    outbox {
+        bigint id PK
+        uuid aggregate_id
+        varchar target
+        varchar operation
+        jsonb payload
+        varchar idempotency_key
+        uuid correlation_id
+        uuid causation_id
+        more 8_further_columns
+    }
+    report_definitions ||--o{ report_definition_versions : "definition_id"
+    report_definition_versions ||--o{ report_runs : "definition_version_id"
+    report_runs ||--o{ report_submissions : "report_run_id"
+```
+
+<Note>
+  **This table is partitioned:** `report_facts`.
+
+  A partitioned table **cannot carry a global unique constraint**. This schema needs no `*_keys` sibling — its uniqueness is carried by a composite primary key instead. An ER diagram cannot express either, so it is stated here.
+</Note>
+
+<Warning>
+  **No relationship line leaves this schema, and that is the boundary rule rather than an omission.** The 3 lines above are real foreign keys inside `reporting`.
+
+  Bare cross-schema references — drawn nowhere, because the database does not enforce them: `artifact_id`, `invocation_id` and `subject_key_id` — and the invocation one is the retention trap: this schema is kept for years and points at a table kept for months.
+</Warning>
+
+`report_facts` is append-only and never deleted; personal data in it is crypto-shredded on erasure.
+
+## Authorization scope
+
+`report_facts` carries scope labels derived at creation from the subject and the report definition's
+domain — the same mechanism as tasks, cases and deliveries.
+
+## What it is not
+
+<Note>
+  **Not an analytics warehouse.** Defined operational and regulatory reports only. Ad-hoc analytics
+  belong downstream, fed from the event stream.
+</Note>
+
+## The gaps that are not this module's to fix
+
+<Warning>
+  **Some reportable occurrences never become facts in the source system**, so nothing arrives here to
+  report on.
+
+  The clearest measured example: a reportable group over the statutory threshold whose currency
+  matches neither configured list, dropped by a two-branch condition with **no else, no log, and no
+  counter**.
+
+  **32 such occurrences are itemised**, each with the change its source service needs.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="integration" icon="plug" href="/engineering/modules/integration">
+    The door every submission leaves by.
+  </Card>
+  <Card title="Publishing hazards" icon="triangle-exclamation" href="/engineering/publishing/hazards">
+    What a source service must change before its facts can be reported at all.
+  </Card>
+</CardGroup>

@@ -1,0 +1,112 @@
+---
+title: "Words you will see"
+description: "The interface uses a small number of words in a very specific sense"
+icon: "book-open"
+---
+
+The interface is in English, and it uses a handful of words precisely. This page is the short list —
+the full glossary is [here](/overview/glossary).
+
+## The four things on screen
+
+<CardGroup cols={2}>
+  <Card title="Event" icon="bolt">
+    Something that **happened**, stated by a source system. Always past tense. It is a fact, never an
+    instruction.
+  </Card>
+  <Card title="Task" icon="list-check">
+    One unit of **your** work. An owner, a deadline, a form, a history.
+  </Card>
+  <Card title="Case" icon="diagram-project">
+    A long-running sequence of steps. Some automatic, some yours.
+  </Card>
+  <Card title="Delivery" icon="bell">
+    One notification's last mile — who it went to, on what channel, and whether it arrived.
+  </Card>
+</CardGroup>
+
+## Status words on an event
+
+You will mostly see these on the Events screen and on Attention.
+
+| Word | Plain meaning | Should you act? |
+| --- | --- | --- |
+| `dispatched` | Everything that was supposed to happen, happened | No |
+| `partial` | Something worked and something did not — **including a notification that reached nobody** | **Yes** |
+| `dead` | An automated step gave up after retrying | **Yes** |
+| `unmapped` | Nobody has configured a reaction to this kind of event yet | **Yes** — it belongs to a configurator |
+| `observed` | Somebody **decided** this is worth keeping and worth nothing else | No |
+| `suppressed` | Deliberately silenced — a maintenance window, or known noise | No |
+| `duplicate` | The same thing arrived twice; the second was dropped | No |
+| `invalid` | The message did not follow the rules — a wrong reference shape, a bad number | **Yes** |
+
+<Note>
+  **`observed` and `unmapped` look the same and mean opposite things.**
+
+  `observed` = *we decided nothing should happen.*
+  `unmapped` = *nobody has looked at this yet.*
+
+  Only the second one is work. Keeping them apart is what lets the `unmapped` queue actually reach
+  zero — and a queue that can reach zero is a queue people keep reading.
+</Note>
+
+## Status words on a delivery
+
+| Word | Means |
+| --- | --- |
+| `dispatched` | Handed to the channel successfully |
+| `no_recipient` | **The rules resolved to nobody.** The message went nowhere |
+| `suppressed` | Policy silenced it deliberately |
+| `failed` | The channel rejected it |
+
+<Warning>
+  `no_recipient` is amber, never green and never red. The action *completed* and reached *nobody* —
+  red would read as a failed send, green would be a lie. It usually means a gap in the responsibility
+  rules, not a broken integration.
+</Warning>
+
+## Words about who does the work
+
+| Word | Means |
+| --- | --- |
+| **Queue** | Your team's shared pool of work. Also the main permission boundary — you see your queues, not other teams' |
+| **Responsibility rule** | The configuration that decides who gets a piece of work. It replaces a channel name hard-coded in someone's application code |
+| **Assignee** | The person a task is currently on |
+| **SLA** | The deadline. Breaching it **escalates** — it never fails silently |
+| **Escalation** | What happens when a deadline passes or nobody responds. Always a visible transition |
+| **Four eyes** | A control where the person who did something may not be the person who approves it. Enforced by the system, not by policy |
+
+## Words about the clock
+
+| Word | Means |
+| --- | --- |
+| **Occurred at** | When the thing actually happened, in the source system |
+| **Received at** | When this platform learned about it |
+| **Due** | When your task is due |
+| **Timer** | Something armed to fire later — a reminder, a breach, a hard deadline |
+
+<Tip>
+  **Occurred-at and received-at are not the same, and the gap matters.** Under a backlog they diverge
+  by exactly the interval where ordering matters. Every event carries both, so a timeline is
+  reconstructable rather than approximated.
+</Tip>
+
+## Words you will see and can ignore
+
+These belong to configurators and engineers. They appear on screens you may be able to see but will
+rarely need.
+
+| Word | Whose it is |
+| --- | --- |
+| **Workflow** | The configured reaction to an event. A configurator's object |
+| **Event type** | The registered kind of an event. A configurator's object |
+| **Subject type** | The kind of thing an event is about, and the shape its reference must take |
+| **Disposition** | What a workflow is for: act, observe, or suppress |
+| **Publisher** | A registered source service allowed to send events |
+| **Correlation id** | The thread tying everything caused by one original action together |
+
+<Note>
+  **If a value could be pasted into a terminal or a search box, it is shown in a monospace font.**
+  Event ids, references, event types, timestamps. Prose and labels are not. That is a deliberate
+  reading aid: monospace means *this is an exact value you may need to copy*.
+</Note>

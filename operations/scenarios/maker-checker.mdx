@@ -1,0 +1,153 @@
+---
+title: "Approving a payout destination"
+description: "Two approvals, two queues, and the one person who may not appear in either"
+icon: "user-check"
+mode: "wide"
+---
+
+Someone adds a bank account or a crypto address that money will later be sent to. Before it can
+receive anything, **two other people must approve it, in order, and neither may be the person who
+added it.**
+
+This is the smallest possible high-stakes control, and the one most likely to be quietly wrong.
+
+<Warning>
+  Every other scenario in this set fails by producing **no work** or **the wrong work**. This one
+  fails by producing **work that looks complete** — an approval chain where one person played two
+  roles.
+</Warning>
+
+## Today, without the platform
+
+Five distinct occurrences — a crypto address registered, a crypto address approved, a crypto address
+management-approved, a bank account approved, a bank account management-approved — implemented as
+**five separate code paths**.
+
+Four of them **posted to one and the same outbound URL**, with:
+
+- **no event type field**
+- **no resource id**
+- a four-key body whose only discriminator was which keys appeared inside a JSON string **nested
+  inside the JSON body** — so the receiver had to parse twice and then sniff key names to learn
+  whether it had been told about a bank account or a crypto address
+
+<Note>
+  This is the single sharpest structural finding in the whole audit, and it is why the event contract
+  requires a type field on every event. **A destination should never have to guess what it just
+  received.**
+</Note>
+
+## With the platform
+
+<Steps>
+  <Step title="Registration states a fact">
+    `customer.payout_destination.registered` — carrying the instrument kind, the destination
+    reference as the subject, and **the person who registered it as the actor**.
+  </Step>
+  <Step title="A case opens">
+    One process definition covers both instrument kinds. A bank account and a crypto address are
+    different objects with different fields and **identical governance**, so they share one control.
+  </Step>
+  <Step title="First approval — a human step in one queue">
+    The reviewer sees the destination, the instrument kind, the fields relevant to that kind, and who
+    registered it.
+  </Step>
+  <Step title="Second approval — a human step in a different queue">
+    A different role. The engine **excludes the first approver by name** — not by asking, and not by
+    convention.
+  </Step>
+  <Step title="The destination becomes usable — or is rejected">
+    Either way, a fact is published and recorded. A rejection carries the rejecting reviewer and the
+    reason, both of which the starting condition dropped.
+  </Step>
+</Steps>
+
+## How exclusion actually works
+
+The control is not a boolean saying "needs four eyes". It **names a prior step**, and the engine
+resolves that step's actor into a list of people to exclude.
+
+<Note>
+  **Why naming a step rather than a person is the correct design:** the engine needs a person id to
+  exclude, and no boolean says *which* prior step's actor that is. In a chain of approvals it is not
+  inferrable at all.
+
+  There is also a publish-time validation: a control that references a step which some branch skips
+  would fire or not fire depending on which way the case went — **the worst behaviour available for a
+  control.** So the reference is validated when the definition is published, not when the case runs.
+</Note>
+
+## The finding this scenario surfaced — and how it was closed
+
+This walkthrough found a real hole. It is worth reading as a worked example of the process, not just
+the outcome.
+
+<Warning>
+  **The exclusion mechanism could not exclude the *maker*.**
+
+  It accepts **step codes**, validated to be human steps within the definition. But the person who
+  registered the destination **acted before the case existed** — they are not a step actor. Their
+  identity arrives as the triggering event's `actor`.
+
+  So the *first* approval — the one that matters most, because it is the first human to look at an
+  address money will be sent to — **could be assigned to the person who added it.**
+
+  Not hypothetical: it is the one control the audited source system **did** implement, at both
+  approval routes, as *creator ≠ approver*. A design that replaces that system must not lose it.
+</Warning>
+
+**The walkthrough recorded three ways out with their costs and deliberately chose none.** That is the
+convention: recording the gap is the instruction; inventing the mechanism is the expensive mistake.
+
+| Option | Cost |
+| --- | --- |
+| **An explicit "exclude the triggering actor" flag** ← chosen | One boolean — the kind the design argues against elsewhere, **except** that there is exactly one trigger actor, so it says nothing ambiguous |
+| Name the trigger inside the exclusion list | Keeps one field and one mental model; costs a magic value in a list that is otherwise step codes |
+| Map the trigger actor into the case's seed context, referenced by path | Most general, largest surface, and re-opens the "definitions that can compute" question |
+
+<Note>
+  **Closed on 2026-07-28.** The trigger actor is added to **the same exclusion set** the step codes
+  populate — one set, one mechanism, and the same failure mode: if the exclusion empties the queue it
+  escalates, **never a silent self-approval**.
+
+  It **defaults to off**, so no already-published definition changes meaning until someone edits it.
+
+  This was the only open item that was a **control that was off**, rather than a number or a name that
+  was missing — which is why it was closed first.
+</Note>
+
+Roughly thirty findings have arrived through this convention, three of them structural.
+
+## What the design does prove here
+
+| Proven | How |
+| --- | --- |
+| Naming a step rather than a person is correct | The engine needs a person id, and no boolean supplies one |
+| Publish-time validation earns its cost | A control referencing a skippable step is worse than no control |
+| Two instrument kinds, one control, three event types | Five source code paths collapse without losing any distinction anyone uses |
+| The mandatory channel belongs on the **failure**, not on the approval | An approval sitting in a queue is visible; a failed one is not |
+| **Nothing here required a deploy** | Three event types, two workflows, one process definition, two task types, two responsibility rules, four channel policies — all configuration |
+
+## What you see as a reviewer
+
+<img
+  src="/images/screens/task-detail.webp"
+  alt="Task detail — the approval form, the evidence, and the activity history"
+  noZoom
+/>
+
+- **Who registered it** — on the task, because the reviewer needs it and because the exclusion
+  depends on it.
+- **The instrument-specific fields** — a bank account and a crypto address ask different questions.
+- **The stage you are at** — first or second approval, and who did the other one.
+- **Your outcome and your reason**, both recorded.
+
+<Warning>
+  If you were the first approver, **you will not be offered the second approval**. An attempt to take
+  it anyway is recorded as a **rejected action** — a denied attempt is itself part of the permanent
+  record, not a silently ignored click.
+</Warning>
+
+<Card title="Next scenario: onboarding" icon="user-plus" href="/operations/scenarios/onboarding">
+  One event, three workflows, all eight modules, every step kind — the flagship walkthrough.
+</Card>

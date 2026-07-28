@@ -1,0 +1,127 @@
+---
+title: "What is deliberately absent"
+description: "Six things not in the API document, each for a stated reason"
+icon: "ghost"
+mode: "wide"
+---
+
+The document emits **`UNSPECIFIED` 101 times**. That number is the point of this page.
+
+<Warning>
+  **A plausible schema is indistinguishable from a specified one six months later** — and this spike
+  has no running code to correct it.
+
+  So where a document names an operation but never describes its body, the operation is emitted with
+  an explicit note rather than an invented shape.
+</Warning>
+
+## 1 · Pagination parameter names
+
+<Note>
+  **No document in the spike names a `page`, `limit`, `offset`, `cursor` or `pageSize` parameter.**
+
+  The only evidence is a rendered table footer — `1–50 of 1,284` — which fixes a **page size of 50**
+  and nothing else.
+</Note>
+
+Emitting a parameter name would be invention. So list operations carry the page size **as prose**, and
+no parameter.
+
+`limit` appears exactly once, as a literal inside one query string, and is emitted **only there**.
+
+## 2 · Response schemas
+
+The screen documents' data tables name the **columns behind each cell**, not a wire shape.
+
+<Note>
+  Those column lists are reproduced in each operation's description. They are **not** restated as
+  reusable schemas, **because a column list is not a response body.**
+</Note>
+
+That is the distinction most likely to be lost by someone tidying this document later. A column list
+says *this cell is backed by that column*; it says nothing about nesting, naming, or what else the
+response carries.
+
+## 3 · Request bodies
+
+Enumerated for **exactly three operations** across the whole spike:
+
+- Updating a channel policy
+- Updating a task type
+- Resolving responsibility
+
+<Warning>
+  **Every other write says so explicitly.** Eighty-plus operations, three known bodies.
+</Warning>
+
+## 4 · Write endpoints for most configuration
+
+This is the largest gap, and the one most likely to be misread as scope.
+
+<Warning>
+  The automation event types, subject types, record types, workflows and stream subscriptions all
+  have **Save / Delete / Activate actions with permission strings** in their screen specifications —
+  **and no path anywhere.**
+
+  The same is true of **every** reporting mutation, and most of integration's.
+
+  **They are not emitted.**
+</Warning>
+
+| Reading the document for | It is |
+| --- | --- |
+| The **read** surface | Broadly useful |
+| The **write** surface | **Misleading** — the absence is a documentation gap, not a decision that those writes do not exist |
+
+<Note>
+  Configuration being editable in the interface is one of the platform's load-bearing properties. The
+  screens specify the actions and the permissions; nothing yet specifies the paths.
+</Note>
+
+## 5 · A circuit-breaker read endpoint
+
+<Note>
+  The integration screen specification states outright that breaker state is **runtime-only**, with
+  *"no specified status endpoint"* — while **three screens render it**.
+
+  **Not emitted. It does not exist.**
+</Note>
+
+That is a genuine finding rather than an omission: three screens display a value that nothing can
+currently supply.
+
+## 6 · Creating a channel policy
+
+The notification screen renders a **Create** affordance for a missing policy row, but only the
+**update** path is named anywhere.
+
+**Not emitted.**
+
+## Why this discipline is worth the awkwardness
+
+<Note>
+  The alternative was a complete-looking document in which the invented parts are indistinguishable
+  from the harvested ones.
+
+  This one is **visibly incomplete in exactly the places the source documents are**, which makes it
+  usable as a gap list rather than only as a reference.
+</Note>
+
+Each absence above maps to a real piece of work: either write the missing specification, or accept
+that the operation does not exist.
+
+## The one thing that is *not* missing
+
+<Card title="The event envelope" icon="envelope" href="/api/event-envelope">
+  Fully specified, machine-checkable, and the only contract a publishing service needs. It has no
+  `UNSPECIFIED` in it at all.
+</Card>
+
+<CardGroup cols={2}>
+  <Card title="Conventions" icon="list-check" href="/api/conventions">
+    Routing, auth, the two guards, and two unresolved spellings.
+  </Card>
+  <Card title="Open questions" icon="circle-question" href="/engineering/open-questions">
+    The architecture's own list, recorded rather than assumed.
+  </Card>
+</CardGroup>

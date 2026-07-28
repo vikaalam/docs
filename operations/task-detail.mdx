@@ -1,0 +1,119 @@
+---
+title: "Working one task"
+description: "What a task detail screen shows, and why each region is there"
+icon: "clipboard-check"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/task-detail.webp"
+  alt="Task detail — outcome form, evidence, provided links, and activity"
+  noZoom
+/>
+
+## The four regions
+
+<Steps>
+  <Step title="Outcome form" icon="clipboard-list">
+    The decision, as structured fields.
+
+    Configured per **task type**, so a sanctions-screening review and a payout-destination approval
+    ask different questions. Adding a new kind of human work is a configuration change, not a deploy.
+
+    **Why structured and not free text:** your answer feeds a case, a report, or both. A process step
+    cannot branch on a paragraph, and a regulatory artifact cannot cite one.
+  </Step>
+  <Step title="Evidence" icon="paperclip">
+    Documents the case gathered automatically — a fetched identity document, a screening result — plus
+    anything you or a colleague attached.
+
+    Attachments are held by a platform-level artifact store, which is also where retention and legal
+    hold apply to them. They are not a folder in a chat channel.
+  </Step>
+  <Step title="Provided links" icon="link">
+    Links that arrived **with the original event**, shown with their **provenance**.
+
+    This is a deliberate design decision, not a detail. A link inside an envelope is the one URL a
+    reviewer is trained to click, so the interface always states where it came from rather than
+    presenting it as if the platform vouched for it.
+  </Step>
+  <Step title="Activity" icon="clock-rotate-left">
+    Assignment, reassignment, comments, and every state change — with who and when.
+
+    This is the *operational* history, held on the task for fast reading. It is separate from the
+    permanent audit record, which is kept for years and cannot be edited by anyone.
+  </Step>
+</Steps>
+
+## What is always on the row
+
+| Field | Why it is there |
+| --- | --- |
+| **Subject** | What this task is about — a deposit, a customer, a destination. Shown as a type and a reference |
+| **Reason** | Why this task exists, with the values that triggered it |
+| **Due** | The deadline, and how close it is |
+| **Queue** | Which team pool it belongs to — also the permission boundary |
+| **Priority** | Ordinal, and encoded as an ordinal rather than a colour, because priority is a rank and colour is a category |
+
+## Four eyes, when it applies
+
+Some tasks carry a **four-eyes** control: the person who acted earlier in the chain may not be the
+person who approves now.
+
+This is enforced by the process engine, not by policy or by asking people to be careful. If you were
+the maker, you will not be offered the approval — and an attempt to take it is **recorded as a
+rejected action**, not silently ignored.
+
+<Warning>
+  **The hardest maker-checker failure is not a missed approval — it is an approval chain where one
+  person played two roles and it looked complete.**
+
+  That is why the exclusion is enforced by the engine and why the attempt is recorded. A control you
+  can only verify by reading names is not a control.
+</Warning>
+
+## Comments
+
+Comments live on the task, not in a chat thread. That is the difference between a discussion you can
+find in a year and one you cannot.
+
+<Note>
+  Chat is still a **destination** — notifications can land there. What changes is that the *record*
+  of the work lives with the work.
+</Note>
+
+## When a task is stuck on something else
+
+Sometimes the honest answer is "I am waiting for a document" or "I need the counterparty to reply".
+
+That is a state, not a blocked queue item: the task records what it is waiting on, the timer stays
+armed, and if the wait exceeds its deadline the task escalates rather than sitting silent.
+
+## What happens when you submit
+
+<Steps>
+  <Step title="Your outcome is written">
+    Together with the audit entry, **inside the same transaction**. If the record cannot be written,
+    your change does not stand — deliberately.
+  </Step>
+  <Step title="The task publishes an event">
+    `task.item.state_changed`. It goes to the same pipeline every other event goes through.
+  </Step>
+  <Step title="If it belonged to a case, the case advances">
+    Through a workflow whose action signals the process. The task itself never calls the case — which
+    is exactly why an ad-hoc task with no case behaves identically.
+  </Step>
+  <Step title="Anyone configured to be told, is told">
+    Through the notification module, on the channels the policy specifies. If that resolves to
+    nobody, it becomes a visible item — not a silent success.
+  </Step>
+</Steps>
+
+<CardGroup cols={2}>
+  <Card title="Maker-checker, worked through" icon="user-check" href="/operations/scenarios/maker-checker">
+    Two approvals, two queues, and the one person who may not appear in both.
+  </Card>
+  <Card title="Cases" icon="diagram-project" href="/operations/cases">
+    When your task is one step of something longer.
+  </Card>
+</CardGroup>

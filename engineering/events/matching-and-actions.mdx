@@ -1,0 +1,183 @@
+---
+title: "Matching and actions"
+description: "All matching workflows run — priority orders, exclusive overrides, eight action types"
+icon: "filter"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/workflows.webp"
+  alt="Workflows — condition, priority, exclusive, disposition, and the ordered action list"
+  noZoom
+/>
+
+## All matching workflows run
+
+A single event may match several workflows, and **every match executes**.
+
+<Note>
+  Concerns attach to an event **independently**: a compliance record, an operations notification, and
+  a task can each be configured by a different team without any of them knowing the others exist.
+</Note>
+
+```
+transaction.settled
+  ├─ workflow "settlement-audit"      priority 10  → record
+  ├─ workflow "large-settlement"      priority 20  → notify (condition: amount > threshold)
+  └─ workflow "manual-review-needed"  priority 30  → create_task + notify
+                                                     (condition: counterparty flagged)
+```
+
+| Mechanism | Behaviour |
+| --- | --- |
+| **Priority** | **Orders execution; it does not select.** Lower number runs first, so ordering is deterministic and reproducible on replay |
+| **`exclusive: true`** | Stops evaluation of every **lower-priority** workflow. This is the suppression and override mechanism |
+| **Isolation** | Each matched workflow produces its own execution rows. One failing never affects another; the event's status is the aggregate |
+
+<Warning>
+  **First-match-wins was rejected.** It makes two teams' independent configurations silently compete —
+  and the losing one fails by *doing nothing*, which is the hardest failure to notice.
+
+  The cost of the chosen design is stated too: an event can trigger more work than its author
+  expected. That is mitigated by the consequence preview.
+</Warning>
+
+## Status precedence when dispositions mix
+
+A suppressing workflow only short-circuits what sits **below** it, so a lower-priority `record` or
+`project` workflow still runs.
+
+```
+if any action executed        → planned → dispatched / partial / dead
+else if a suppress matched    → suppressed
+else if an observe matched    → observed
+else                          → unmapped
+```
+
+<Note>
+  **`suppressed` and `observed` mean "nothing ran".** If anything ran, the status reports the actions.
+
+  This ordering is what makes *"suppress the pager but keep the record"* expressible — place the
+  recording workflow at a **lower priority number** than the suppressor.
+</Note>
+
+## The eight action types
+
+The list is closed, deliberately.
+
+| Action | Reaches | Does |
+| --- | --- | --- |
+| `notify` | `notification` | Resolve recipients, apply channel policy, hand off to the driver |
+| `create_task` | `task` | Mint human work with an owner, an SLA, and a form |
+| `start_process` | `process` | Open a case |
+| `signal_process` | `process` | Advance a waiting case |
+| `call` | `integration` | Invoke a **logical capability** — the caller never learns which vendor |
+| `project` | `directory` · `reporting` | Feed a read-only projection |
+| `record` | `automation` itself | Write a typed, retained projection of the fact |
+| `emit` | Ingest | Publish a derived event back into the pipeline |
+
+<AccordionGroup>
+  <Accordion title="Why project exists at all" icon="table">
+    Both `directory` and `reporting` declare that they consume events through `automation` — and
+    **no action type could reach either**, while the "only stream reader" rule forbids them
+    subscribing directly.
+
+    The alternative, per-module stream consumers, deletes that rule's entire benefit: ordering,
+    idempotency and **both loop guards** would live in four places instead of one.
+
+    So projections inherit the outbox's idempotency, retry, and dead-letter visibility, and separate
+    read-only client tokens keep the contracts read-only.
+  </Accordion>
+  <Accordion title="Why record is separate from observe" icon="box-archive">
+    `observe` keeps the raw envelope in a store that is **dropped on a months-long schedule**.
+
+    `record` writes a **typed, chosen-field, redactable** projection with **its own retention** — and
+    it is the only configuration that can satisfy an obligation measured in years.
+
+    The two screens name each other in their empty states for exactly this reason.
+  </Accordion>
+</AccordionGroup>
+
+## The retention invariant
+
+<Warning>
+  **Every active event type with a declared retention obligation must have an active workflow carrying
+  an active `record` action whose target record type's retention meets or exceeds it — and that record
+  type must itself be active.**
+</Warning>
+
+Four tables are involved, which is why **no single module's save path can own it**.
+
+<Note>
+  **It is a continuous invariant, not a save-time check.** Checking only on save was the defect: the
+  configuration is legal when written and becomes illegal later, *without anyone editing the object
+  whose save would have been refused* — deactivate the workflow, deactivate the record type, or
+  shorten the retention.
+
+  A violation is therefore a **queue item**, not an exception. The obligation is already unbacked by
+  the time anyone could be told, so failing the next unrelated edit would help nobody.
+</Note>
+
+## Conditions are deliberately limited
+
+<Warning>
+  **A condition language that grows into a programming language is a deploy in disguise, without any
+  of a deploy's review.**
+</Warning>
+
+Two specific rules:
+
+- Decimal paths declared on the event type are compared with an **arbitrary-precision comparator**.
+- A condition comparing a decimal path to a float literal is **rejected when the workflow is saved** —
+  not at evaluation time, when it would be a silent wrong answer at exactly the threshold a
+  large-transaction rule exists to detect.
+
+## Previewing before firing
+
+<img
+  src="/images/screens/consequence-preview.webp"
+  alt="Consequence preview — what would run, what would not, and why"
+  noZoom
+/>
+
+The consequence preview answers *"what will this event actually do?"* **before one is fired**.
+
+- **Nothing is written and nothing is published**, and the pane header says so rather than leaving it
+  to trust.
+- **Non-matches are listed, never hidden.** Seeing why a workflow did *not* match is the point.
+- An active exclusive suppressor renders first, and everything below it greys out as *would not run*.
+
+## Firing for real is a different screen
+
+<img
+  src="/images/screens/simulator.webp"
+  alt="Simulator — firing a real event through the real transport, with type-to-confirm"
+  noZoom
+/>
+
+<Note>
+  **Publish is deliberately kept off the preview screen**, so that *"which button fires real
+  traffic?"* has exactly one answer.
+
+  The simulator is the one screen in the product that emits. Its confirmation takes the lower half of
+  the result pane: blast radius as **measured numbers**, what will *not* happen, and type-to-confirm
+  on the event type code.
+</Note>
+
+## Why a workflow is only built from a shape that arrived
+
+The workflows screen's primary action is **"browse unmapped events"**, not "create workflow".
+
+<Note>
+  A workflow written against an imagined envelope is a workflow that matches nothing, and the failure
+  is silent. Building one from a real arrival means the shape is known to exist.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Event lifecycle" icon="database" href="/engineering/events/lifecycle">
+    Eleven statuses, and the four stores that are all called "the log".
+  </Card>
+  <Card title="The automation module" icon="bolt" href="/engineering/modules/automation">
+    Where all of this lives.
+  </Card>
+</CardGroup>

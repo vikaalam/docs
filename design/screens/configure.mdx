@@ -1,0 +1,107 @@
+---
+title: "Gallery · Configure"
+description: "Definitions, policies, providers and destinations"
+icon: "sliders"
+mode: "wide"
+---
+
+Everything that changes what the platform does — owned by `process`, `notification`, `integration`
+and `reporting`.
+
+<Note>
+  **Every screen in this group embeds its own audit history.** Who changed this, when, and what it
+  looked like before — on the same screen as the thing being changed.
+
+  That is the design paying back the cost of configuration living in a database rather than in git.
+</Note>
+
+## Process definitions
+
+<img src="/images/screens/process-definitions.webp" alt="Process definitions — which flows exist, and what runs on which version" noZoom />
+
+`process` — which flows exist and what is running on which version.
+
+Both rows here are **derived**: a definition is on screen because a workflow starts or signals it, and
+the running counts are the instance references those executions returned.
+
+<Note>
+  Published and draft render as **absent** — no fixture carries a version for any definition, and the
+  screen says so rather than showing an illustrative number.
+</Note>
+
+## Channel policies
+
+<img src="/images/screens/channel-policies.webp" alt="Channel policies — category by severity, mandatory channels, quiet hours" noZoom />
+
+`notification` — category × severity → channels, plus mandatory channels, quiet hours and the digest
+window.
+
+<Warning>
+  The four categories are a **closed union** — incident · assignment · approval · audit — deliberately
+  **not** domain-flavoured.
+
+  A conflict between that union and domain-flavoured values in the sample data is **filed as an open
+  finding and left open**, with the sample named as the likely defect. Severity is the column axis and
+  is **still never a pill**.
+</Warning>
+
+## Destinations
+
+<img src="/images/screens/destinations.webp" alt="Destinations — named rows, their resolution state, and their references" noZoom />
+
+`integration`, under the **global-resource treatment**. Owns every outbound URL in the product.
+
+<Warning>
+  A free-form URL is forbidden **everywhere else**. This screen is the single deliberate exception the
+  rule was written around.
+</Warning>
+
+Three of the destinations drawn are referenced by workflow actions; three regulator codes are
+referenced by nothing — which exercises the **unreferenced** state, a neutral pill and never a
+warning. An unused destination is not a problem; an unknown one is.
+
+<Note>
+  Only one destination has a base URL, paths, auth and a timeout anywhere in the sample set. The other
+  five render *"not in the seed set"* rather than an invented hostname.
+
+  The resolution line is **a check, not a promise** — egress resolves again at call time.
+</Note>
+
+## Report definitions
+
+<img src="/images/screens/report-definitions.webp" alt="Report definitions — versioned, each with a named destination" noZoom />
+
+`reporting` — versioned, and **a run pins a version**.
+
+Destinations are **named rows**: `regulator-str-filing`, `fintrac-lvctr` — not an endpoint.
+
+Read-only for a compliance reader; the owner edits.
+
+## Responsibility, people and teams
+
+`directory` owns these, and they are the answer to the one question no service in the audited estate
+could answer: **who is responsible for a thing.**
+
+<Note>
+  Rules are **ordered, and the first match wins** — and they key on **what kind of work it is**, never
+  on what kind of thing it is about.
+
+  Keying on the subject is the trap that only shows up in production: an item matching two rules lands
+  in two queues and two teams work it.
+</Note>
+
+## Task types
+
+`task` owns the shape of each kind of human work: its form, its SLA, its responsibility descriptor,
+and whether it is an **approval**.
+
+<Note>
+  That last flag exists so that a control that **stopped because nobody is eligible** can be told from
+  a queue that is merely quiet. They share a backend condition and **must not share a rendering**.
+</Note>
+
+<CardGroup cols={3}>
+  <Card title="Work" icon="list-check" href="/design/screens/work" />
+  <Card title="Signals" icon="bolt" href="/design/screens/signals" />
+  <Card title="Records" icon="box-archive" href="/design/screens/records" />
+</CardGroup>

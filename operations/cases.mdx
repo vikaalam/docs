@@ -1,0 +1,148 @@
+---
+title: "Cases"
+description: "Long-running work — where it is, and why it is stuck"
+icon: "diagram-project"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/ops-cases.webp"
+  alt="Ops · Cases — two derived rows, every absence carrying its reason"
+  noZoom
+/>
+
+## What a case is
+
+A **case** is a long-running sequence of steps — onboarding a customer, an enhanced due-diligence
+review, assembling and filing a report.
+
+Some steps are automatic. Some are yours. Some are just waiting.
+
+| Step kind | Means |
+| --- | --- |
+| **Automatic** | The platform does it — calls a vendor, generates a document, writes a projection |
+| **Human** | It becomes a task with an owner and a deadline |
+| **Wait** | It is waiting for something external, with a timer armed |
+| **Branch** | It goes one way or another based on an earlier outcome |
+| **Parallel** | Several things run at once and join afterwards |
+
+## Why this screen currently shows no status at all
+
+<Warning>
+  **No status pill is drawn on any row — deliberately.**
+
+  A neutral pill would read as `waiting`, which is **a real status value**. Drawing one where no status
+  exists would state something false about a live case.
+</Warning>
+
+The same discipline runs through the rest: position, step list, timers, the pinned version and the
+definition name are all rendered as **absences with their reason**, because the underlying case data
+does not exist in the sample set yet.
+
+**Even the default filter is drawn as unevaluable.** *Open* means a status in running, waiting or
+escalated — and no row carries a status, so the list is shown unfiltered and the footer says so
+rather than silently showing everything.
+
+<Note>
+  **One case's scope is provably broken, and it is marked.** The rule deriving who can see it points
+  at a field no deposit event actually carries, so the derivation produces nothing.
+
+  The word **unscoped is deliberately not used** — *unscoped* is a positive claim that something is
+  visible to everyone, and here emptiness has not been established. It is marked as a **condition**,
+  not a status.
+</Note>
+
+## Opening one
+
+<img
+  src="/images/screens/case-detail.webp"
+  alt="Case detail — ordered steps, pinned version, armed timers, and sub-tasks"
+  noZoom
+/>
+
+The case detail answers one question that used to take four systems: **where is this, and why is it
+stuck?**
+
+<Steps>
+  <Step title="The ordered steps">
+    Every step, in order, with its kind and its state. Completed, running, waiting, failed, skipped.
+  </Step>
+  <Step title="What it is waiting on right now">
+    Named explicitly. In the example above: a source-of-funds document, past its 7-day deadline —
+    which is why it escalated.
+  </Step>
+  <Step title="Armed timers">
+    What will happen if nothing changes, and when. A reminder, an escalation, a hard deadline.
+  </Step>
+  <Step title="Sub-tasks">
+    The human steps, handed to real people, with their own owners and deadlines.
+  </Step>
+  <Step title="The pinned definition version">
+    Which version of the process this case is running. See below — this matters more than it looks.
+  </Step>
+</Steps>
+
+## Cases are pinned to a version
+
+When a case starts, it is **pinned to the process definition version in force at that moment**. If
+somebody edits the definition tomorrow, cases already running keep the old one.
+
+<Note>
+  **Why this matters to you:** a case that started under last quarter's rules is completed under last
+  quarter's rules. Nobody's in-flight work changes shape underneath them.
+
+  **Why it matters to compliance:** a regulated case is auditable against the rules that were
+  actually in force when it started — which is the only version an auditor cares about.
+</Note>
+
+Old versions are never deleted. That is a real storage cost, accepted deliberately.
+
+## Why a case is stuck — the honest answers
+
+| The screen says | It means | Who fixes it |
+| --- | --- | --- |
+| Waiting on a human step | A person has it and has not finished | Them, or their lead |
+| Waiting on a human step, **past deadline** | It escalated | Whoever the escalation named |
+| Waiting on a provider callback | A vendor was asked and has not answered | A timer will escalate; nothing to do yet |
+| A step **failed** | A vendor call exhausted its retries | An engineer or an admin |
+| Waiting with **no future timer** | Something went wrong in configuration | A periodic guard catches this — it is not left to be noticed |
+
+<Warning>
+  **"Waiting with no future timer" is checked for on purpose.** A case waiting on something that will
+  never arrive, with no armed timer, is invisible by construction — it never fails, so nothing alerts.
+  A periodic guard looks for exactly that state.
+</Warning>
+
+## There is no undo
+
+This is deliberate and worth knowing before you look for the button.
+
+<Note>
+  **Compensation after a human has been told something is fiction.**
+
+  There is no automatic rollback and no reverse-execution engine. Where a step needs to be undone, it
+  is modelled as an **explicit compensating step** — visible in the case like any other step, with an
+  owner and a record.
+
+  An automatic "undo" that sends a second message reversing the first is not a rollback. It is two
+  events, and pretending otherwise makes the history harder to read, not easier.
+</Note>
+
+## What a case is not
+
+- **Not a BPMN diagram.** Sequence, branch, parallel, wait and timer. Nothing more. If a flow needs
+  more than that, it belongs in a dedicated engine — a decision taken deliberately rather than by
+  accumulation.
+- **Not a ticket.** A ticket has a status; a case has a *position* in a defined sequence, a version,
+  and armed timers.
+- **Not where your work lives.** Your work is a **task**. The case is the thing your task is a step
+  of.
+
+<CardGroup cols={2}>
+  <Card title="Worked scenario: onboarding" icon="user-plus" href="/operations/scenarios/onboarding">
+    One event, three workflows, all eight modules, every step kind.
+  </Card>
+  <Card title="My tasks" icon="list-check" href="/operations/my-tasks">
+    The human steps, from your side.
+  </Card>
+</CardGroup>

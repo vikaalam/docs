@@ -1,0 +1,136 @@
+---
+title: "Platform capabilities"
+description: "Infrastructure as a contract, with drivers behind it — and the third case that is neither"
+icon: "plug"
+mode: "wide"
+---
+
+A **capability** is infrastructure expressed as a contract, with one or more drivers behind it.
+Modules depend on the contract; the driver is chosen by configuration at boot.
+
+## The eleven
+
+| Capability | Contract | Drivers | Why a capability and not a module |
+| --- | --- | --- | --- |
+| `EventStream` | publish · subscribe · ack · claim | Redis Streams | Every module publishes; nobody owns the transport |
+| `Outbox` | enqueue in-transaction, pump out of it | Postgres | One implementation, one table shape per module schema |
+| `Notifier` | `send` · `ensureCategories` · `health` · **`issueInboxSession` (optional)** | Notification platform · SMTP-only fallback | Swapping the vendor must touch one file |
+| `Lock` | `acquire(key, ttl)` | Redis | Used by the pump and the timer scanner |
+| `Cache` | get · set · invalidate | Redis · in-memory | — |
+| `Authn` | `verify(bearer) → Principal` | OIDC (JWKS) · static (tests, machine principals) | Token verification is **local**; no service is called on the request path |
+| `Authz` | `enforce(subject, resource, action, scope)` | Policy engine | The **driver** is local and in-memory; the **policy it loads** is distributed by the auth service |
+| `AuditRecorder` | `record(entry)` — **in the caller's transaction** | Postgres | Deliberately not extractable |
+| `ArtifactStore` | put · get · signed-url · retain | S3-compatible · local filesystem | Used by `reporting` and `task`; owned by neither |
+| `Crypto` | encrypt · decrypt · hmac | Envelope encryption over a KMS, or a local key | Credentials and personal data at rest |
+| `Clock` | `now()` | system · frozen (tests) | Deterministic tests for SLA and timers |
+
+## A missing driver degrades one capability, never the process
+
+Each capability reports at boot whether its driver is present and healthy, and the report is served
+at `/health/capabilities`.
+
+<Note>
+  If the notifier is down, **ingest continues** and notifications queue in the outbox.
+
+  The alternative — refusing to start — turns a vendor outage into a platform outage.
+</Note>
+
+## Two toggles that must never be conflated
+
+| Toggle | Question | Lives in |
+| --- | --- | --- |
+| **Capability availability** | Is the driver configured at all? | Boot configuration. A deployment without an object store runs on the local filesystem driver |
+| **Feature configuration** | Is this workflow enabled? Is this channel mandatory? | The **database**, edited in the interface |
+
+## The third case: a driver that satisfies part of a contract
+
+This is the interesting one, and it was found rather than designed.
+
+<Warning>
+  The two declared notifier drivers are **not interchangeable**. The SMTP fallback is defined as
+  *"email only, no inbox, no preferences"* — so it cannot implement the inbox-session method, while
+  the design builds a whole in-app inbox on it.
+
+  *"A missing driver degrades one capability"* does not cover **a driver that is present and answers
+  half the contract.**
+</Warning>
+
+The resolution:
+
+<Steps>
+  <Step title="A capability method may be declared optional">
+    Explicitly, in the contract.
+  </Step>
+  <Step title="Health reporting says which optional methods the configured driver implements">
+    So the absence is discoverable at boot, not on the first dispatch.
+  </Step>
+  <Step title="The interface renders the absence, not a failure">
+    A deployment on the SMTP driver loses the inbox and shows that it has.
+  </Step>
+  <Step title="The required half stays absolutely required">
+    A driver that cannot `send` is not a notifier, and the platform **refuses it at boot**.
+  </Step>
+</Steps>
+
+<Note>
+  This is the only capability with an optional method today. If a second acquires one, it is declared
+  the same way — **an optional method that only its own module knows about is a capability boundary
+  that has stopped meaning anything.**
+</Note>
+
+## Why some of these are not modules
+
+<AccordionGroup>
+  <Accordion title="Audit — because a module can be forgotten" icon="shield-check">
+    Almost every audit implementation fails the same way: a module is *supposed* to call an audit
+    client, and one day it does not — a new endpoint, a background job, a fix applied in a hurry.
+
+    **An audit that is sometimes written is equivalent to no audit at all**, because its absence
+    proves nothing.
+
+    So the write path is inverted: auditing is a capability that enlists in the caller's transaction,
+    not a service to be called.
+  </Accordion>
+  <Accordion title="Artifacts — because a module would create a lying dependency" icon="box-archive">
+    `task` needs attachments; `reporting` needs outputs. A `document` module would have forced
+    `task → reporting` — **a dependency whose name lies about what it is for**.
+
+    Retention and legal hold live with the capability instead.
+  </Accordion>
+  <Accordion title="The event stream — because everyone publishes" icon="tower-broadcast">
+    Every module publishes and nobody owns the transport. A module would make one of them the owner of
+    something all eight depend on.
+  </Accordion>
+  <Accordion title="The clock — because tests need to control time" icon="clock">
+    SLA arithmetic and timer expiry are the hardest things in the platform to test, and impossible to
+    test deterministically against the system clock.
+  </Accordion>
+</AccordionGroup>
+
+## The capability rule and the frontend
+
+This is worth stating because it decided the largest single choice in the web application.
+
+<Warning>
+  **The notifier is one driver behind a capability.** Swapping the vendor must touch one file, and its
+  import is confined to a single directory.
+
+  An earlier decision chose the frontend framework from **that driver's component catalogue** —
+  letting an unconfirmed, deliberately swappable vendor pin the one choice hardest to reverse.
+
+  It was reversed. And the component it protected **is never mounted**: no screen embeds it, and the
+  design states outright that inbox read state belongs to the driver, outside this product's
+  interface.
+</Warning>
+
+The lesson generalises: **a capability's driver may never constrain a decision outside the module
+that owns the capability.** If it does, the boundary has already failed.
+
+<CardGroup cols={2}>
+  <Card title="Deployment" icon="server" href="/engineering/platform/deployment">
+    Process roles, single-active jobs, and ports.
+  </Card>
+  <Card title="Failure handling" icon="triangle-exclamation" href="/engineering/platform/failure-handling">
+    Every failure mode, its symptom, and its handling.
+  </Card>
+</CardGroup>

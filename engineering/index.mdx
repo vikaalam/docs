@@ -1,0 +1,155 @@
+---
+title: "Architecture overview"
+description: "The shape, the stack, and what has actually been built so far"
+icon: "cube"
+mode: "wide"
+---
+
+import { ModuleGraph } from "/snippets/module-graph.jsx";
+
+## The stack
+
+**NestJS 11 · PostgreSQL 17 · Redis 7 (Streams) · Vue 3 + Vite SPA.** One deployable process, one
+database instance, **one schema per module**.
+
+<Warning>
+  **There is no product code yet.** This is a design spike. The planned source layout is specified,
+  not runnable.
+
+  What *does* exist is listed at the bottom of this page, and it is more than documents.
+</Warning>
+
+## The shape in one screen
+
+<ModuleGraph />
+
+### Every edge, enumerated
+
+The figure carries the **shape**; this table carries the **enumeration**. Splitting them is
+deliberate — a graph drawn with all nineteen edges on it is a picture nobody reads twice.
+
+| From | To | Through | Kind |
+| --- | --- | --- | --- |
+| `automation` | `process` | `start_process` · `signal_process` | Downward call |
+| `automation` | `task` | `create_task` | Downward call |
+| `automation` | `notification` | `notify` | Downward call |
+| `automation` | `integration` | `call` | Downward call |
+| `automation` | `reporting` | `project` | Downward call |
+| `automation` | `directory` | `project` | Downward call |
+| `process` | `task` | human step | Downward call |
+| `process` | `integration` | automatic step | Downward call |
+| `process` | `reporting` | automatic step | Downward call |
+| `process` | `notification` | escalation · step notice | Downward call |
+| `task` | `directory` | `resolveResponsible` | Downward call |
+| `task` | `notification` | assignment notice | Downward call |
+| `notification` | `directory` | `resolveResponsible` | Downward call |
+| `reporting` | `integration` | submission | Downward call |
+| `task` | *the stream* | `task.item.state_changed` | **Return** |
+| `integration` | *the stream* | `integration.invocation.completed` | **Return** |
+| `process` | *the stream* | `process.instance.completed` | **Return** |
+| `reporting` | *the stream* | `reporting.run.completed` | **Return** |
+| `directory` | *the stream* | `directory.responsibility.changed` | **Return** |
+
+<Note>
+  **`audit` appears in neither column, and that is the point.** Nothing calls it, and it publishes
+  nothing — which is why it owns no outbox, and why it is the one module that can never be extracted.
+</Note>
+
+## The one rule that keeps the graph acyclic
+
+<Note>
+  **Calls downward are synchronous, through `client/`. Returns upward are asynchronous, through
+  events.**
+</Note>
+
+This is not a stylistic preference. It is the only thing preventing the two cycles this design would
+otherwise have:
+
+- **`task` must never know `process` exists.** When a task reaches a terminal state it publishes
+  `task.item.state_changed` to its outbox. That event goes to the stream, re-enters through ingest
+  like any external event, and matches a workflow whose action is `signal_process`. A direct call
+  would make `process → task → process` a cycle — and, worse, would stop `task` being usable for
+  ad-hoc work that belongs to no process.
+- **`integration` must never know `process` exists.** An asynchronous provider result returns the
+  same way.
+
+The cost is one Redis round trip per resumption. Two things are bought: the resumption is **durable**
+(it survives a restart on either side) and **visible** (internal transitions appear in the same
+ingest history as external events, so the entire operational timeline is one queryable list).
+
+## Where to start reading
+
+<CardGroup cols={2}>
+  <Card title="The dividing principle" icon="scissors" href="/engineering/dividing-principle">
+    The sentence every other rule descends from, and the five changes it makes cheap.
+  </Card>
+  <Card title="Three layers" icon="layer-group" href="/engineering/three-layers">
+    Reflex, deliberation, and work — and the test that decides where a requirement belongs.
+  </Card>
+  <Card title="Module roster" icon="cubes" href="/engineering/module-roster">
+    Eight modules, their schemas, their tables, and the two modules deliberately absent.
+  </Card>
+  <Card title="Boundaries" icon="shield-halved" href="/engineering/boundaries">
+    Eight rules, and the CI gates that enforce them — including the ones a module graph cannot see.
+  </Card>
+  <Card title="The event contract" icon="file-contract" href="/engineering/events/contract">
+    Two doors, one pipeline. The envelope, the guards, the matcher, the eight action types.
+  </Card>
+  <Card title="Decision records" icon="gavel" href="/engineering/decisions">
+    All 32, with what each rejected and what it costs.
+  </Card>
+</CardGroup>
+
+## What has actually been produced
+
+Beyond the specification itself, five generated artefacts exist — **all of them output of the
+documents rather than sources.**
+
+| Artefact | What it is | Generated from |
+| --- | --- | --- |
+| Per-schema migrations | **65 base tables plus 6 partition children — 71 physical tables across 9 schemas.** Verified by applying all nine together to PostgreSQL and checking the conventions against the system catalogue — not against the SQL text | Each module's data model, plus the cross-schema section |
+| [Event envelope JSON Schema](/api/event-envelope) | The envelope, machine-readable. The seven forbidden fields are **declared**, so a validator names the offender rather than shrugging | The event contract |
+| [OpenAPI specification](/api) | The HTTP surface — 84 paths, 92 operations. **Harvested, not designed:** only two paths are named above the design layer | The endpoints the module and screen documents already name |
+| Seeded event types | **139 registered event types.** Domain vocabulary is permitted here and nowhere else in the core | The event catalogue |
+| Boundary and vocabulary gates | Dependency rules, lint rules, the domain-term list, and the check script | The boundary rules and the company-agnostic rule |
+
+<Warning>
+  **The generated artefacts are output and must never be edited to resolve a disagreement.** If a
+  migration and a module data model differ, the migration is wrong. Regenerate; do not patch.
+</Warning>
+
+<Note>
+  **The table count was re-measured on 2026-07-28 and had drifted.** An earlier figure of *58 table
+  names, 64 physical tables* is superseded: counting `CREATE TABLE` statements across the nine
+  migration files gives **65 base tables and 6 partition children**.
+
+  Per schema: `automation` 13 · `directory` 9 · `integration` 9 · `process` 7 · `reporting` 6 ·
+  `task` 6 · `audit` 5 · `notification` 5 · `platform` 5.
+
+  The correction is recorded rather than substituted silently, for the same reason the send-site
+  counts carry theirs: **a checkable number that is wrong costs more than one never claimed.**
+</Note>
+
+## Two things that run today
+
+```bash
+python3 tools/design-sync.py   # twelve checks: does design/ still describe the architecture,
+                               # and does the architecture still agree with the modules?
+./tools/arch-check.sh          # the company-agnostic gate
+```
+
+<Note>
+  The twelve design-sync checks have **each been proven to fail against an injected defect**, so a
+  clean run means something. A gate that has never rejected anything is not a gate; it is a config
+  file.
+</Note>
+
+## The document hierarchy
+
+Everything on this site derives from a ranked set of source documents, and the ranking is
+mechanically enforced.
+
+<Card title="Document structure" icon="sitemap" href="/document-structure">
+  Which document decides what, why the direction is one-way, and the two checks that stop a document
+  going unfiled.
+</Card>

@@ -1,0 +1,175 @@
+---
+title: "A day in the life"
+description: "Morning to evening, screen by screen"
+icon: "sun"
+mode: "wide"
+---
+
+An ordinary day for a compliance or operations analyst. Every screen shown here is a real design
+export.
+
+## 09:00 — Open Attention
+
+<img
+  src="/images/screens/ops-attention.webp"
+  alt="Ops · Attention — nine cards, scoped to operations"
+  noZoom
+/>
+
+**Attention** is the first thing you open, and on most days the only thing you need before lunch.
+
+It unions the work of six different parts of the platform into one list: tasks assigned to you, tasks
+nobody has picked up, cases waiting past their deadline, events nobody has configured a reaction for,
+notifications that reached nobody, and automated steps that gave up after retrying.
+
+<Note>
+  **Attention aggregates and owns nothing.** Every row belongs to a real screen somewhere else, and
+  clicking it takes you there. That is deliberate — it means the screen can never grow logic of its
+  own and start disagreeing with the thing it summarises.
+</Note>
+
+What you are reading, top to bottom:
+
+| Signal | Means | Do what |
+| --- | --- | --- |
+| Red | Something broke, or a deadline has passed | Now |
+| Amber | Something reached nobody, or nobody has claimed it | Today |
+| Grey | Suppressed or duplicate — recorded, no action | Nothing |
+| A count that is not falling | The queue is not draining | Tell your lead |
+
+## 09:20 — Work your own list
+
+<img
+  src="/images/screens/ops-my-tasks.webp"
+  alt="Ops · My tasks — grouped by the workflow that created each task"
+  noZoom
+/>
+
+**My tasks** is your work and only yours, grouped by **the workflow that created each task** —
+because the task type, its priority and its deadline are properties of that workflow's configuration,
+true for the group and not for any single row.
+
+Each row carries the four things you need before opening anything: **what it is**, **what it is
+about** (the subject), **when it is due**, and **why it exists**.
+
+That last one is the change from today. A task created because an automatic check declined to decide
+says *which* check and *what value* — not "review needed".
+
+<Tip>
+  Prefer a board? The same data is available as a Kanban view, grouped by workflow state rather than
+  listed. It is a view option, not a different screen — same tasks, same deadlines.
+</Tip>
+
+<img
+  src="/images/screens/my-tasks-kanban.webp"
+  alt="My tasks as a Kanban board, grouped by workflow state"
+  noZoom
+/>
+
+## 10:15 — Open one task
+
+<img
+  src="/images/screens/task-detail.webp"
+  alt="Task detail — the outcome form, evidence, provided links, and the activity history"
+  noZoom
+/>
+
+One unit of work, opened. Four regions:
+
+<Steps>
+  <Step title="The outcome form">
+    What you are being asked to decide, as a form — not as free text. The fields are configured per
+    task type, so a screening review and a payout approval ask different questions.
+  </Step>
+  <Step title="Evidence">
+    Attachments and documents gathered by the case, plus anything you add.
+  </Step>
+  <Step title="Provided links">
+    Links that came in with the event, **with their provenance shown**. A link in an envelope is the
+    one URL a reviewer is trained to click, so the interface always says where it came from.
+  </Step>
+  <Step title="Activity">
+    Everything that has happened to this task: assignment, reassignment, comments, state changes, with
+    who and when.
+  </Step>
+</Steps>
+
+## 11:40 — A case is stuck
+
+<img
+  src="/images/screens/ops-cases.webp"
+  alt="Ops · Cases — where each case is, and what it is waiting on"
+  noZoom
+/>
+
+A **case** is a long-running sequence — onboarding, an enhanced review, a filing. The list shows
+which cases are running and what each is waiting on; opening one shows the ordered steps and their
+kind, where it is right now, the armed timers, and the sub-tasks handed to people.
+
+<Note>
+  On the current design, **no status is drawn on any row** — because no case data carries one yet, and
+  a neutral pill would read as `waiting`, which is a real status. The absence is rendered as an
+  absence.
+</Note>
+
+<Note>
+  **"Why is this stuck" is a field, not an investigation.** In the starting condition, answering it
+  meant opening the monitoring tool, the case notes, the chat channel and the database.
+</Note>
+
+## 14:00 — Check the team queue
+
+<img
+  src="/images/screens/queues.webp"
+  alt="Queues — depth, unassigned work, and SLA health per team"
+  noZoom
+/>
+
+If you lead a team, this is your screen. Depth, unassigned work, and SLA health per queue.
+
+A queue is also the main **permission scope**: a compliance reviewer can see and act inside
+`queue:compliance` and not inside `queue:treasury`. That is not a UI filter — it is enforced on the
+server, and a hidden button is never treated as a permission.
+
+## 16:30 — "Did anyone actually get told?"
+
+<img
+  src="/images/screens/ops-notifications.webp"
+  alt="Ops · Notifications — outcomes only, never settings"
+  noZoom
+/>
+
+**Notifications** is the record of what reached a person. Every send, its recipient count, its
+channel, its outcome.
+
+Note there is no `delivered` — the outcomes stop at `handed_off`, because the notifier owns the last
+mile and this platform does not claim to know what it cannot see.
+
+The row that matters most is the one that reached nobody. It is marked `no_recipient` — **amber, not
+red and not green**. Amber because the action completed and reached nobody: red would read as a
+failed send, and green would be a lie.
+
+<Warning>
+  A `no_recipient` delivery makes its **event** `partial`, not `dispatched`. The two screens agree by
+  construction. Before this rule, the event history showed green for an alert nobody received, and
+  the finding lived only in the delivery log where nobody looked.
+</Warning>
+
+The usual cause is not a broken integration. It is a **hole in the responsibility rules** — nobody is
+configured as responsible for that combination. That is a configuration fix, and the queue tells you
+which one.
+
+## 17:00 — Close the loop
+
+Nothing to do. Every action you took today is already recorded with your name, the time, and what the
+thing looked like before you touched it — not because you remembered to write it down, but because
+the record is written inside the same transaction as the change.
+
+<CardGroup cols={2}>
+  <Card title="The words on these screens" icon="book-open" href="/operations/vocabulary">
+    Every term the interface uses in a specific sense.
+  </Card>
+  <Card title="A worked scenario" icon="money-bill-transfer" href="/operations/scenarios/deposit-escalation">
+    A deposit nobody can attribute, escalated through two teams.
+  </Card>
+</CardGroup>

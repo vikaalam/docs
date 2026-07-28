@@ -1,0 +1,117 @@
+---
+title: "The dividing principle"
+description: "The sentence every other rule descends from"
+icon: "scissors"
+---
+
+<Note>
+  **Source systems state facts. `workspace-ops` decides the reaction, runs the process, and assigns
+  the work. Business entities never change hands.**
+</Note>
+
+## The consequence that does the work
+
+The most important half is the second one: **`workspace-ops` is never the system of record for a
+business entity.** It does not own the customer, the transaction, the balance, or the account. It
+owns the *process* and the *work* performed on them, and refers to them through an opaque subject
+reference.
+
+That constraint is what makes the platform portable.
+
+<Warning>
+  A system that **copies** customer records is bound to one company's customer schema forever. A
+  system that only **references** them can be deployed anywhere.
+</Warning>
+
+## What the principle makes cheap
+
+| Change | Touches |
+| --- | --- |
+| A new event needs to notify someone | **Zero deploys.** Configuration |
+| A new step is added to the onboarding flow | **Zero deploys.** A new process definition version |
+| The identity-verification vendor is replaced | **One connector** + one binding row. No process definition changes |
+| The notification vendor is replaced | **One driver file** |
+| A whole new operational domain is added | **One new module**, plus one registry line. Existing modules untouched |
+
+Those five rows are the design goal restated as a cost table. Every rule elsewhere in the
+architecture exists to keep one of them true.
+
+## The three mechanisms that hold the line
+
+The core must never learn the domain. Three things enforce that, and none of them is a convention.
+
+<Steps>
+  <Step title="Subjects are opaque">
+    An event's subject is a pair — a **type** and a **reference**. The platform validates the
+    reference's **shape** against a registered format; it **never** validates its existence.
+
+    No customer table. No transaction table. A typo like `custmer` is caught; a reference to a
+    customer deleted upstream is not, and is not supposed to be.
+  </Step>
+  <Step title="Capabilities are logical, not vendor-named">
+    A process step asks for `identity.verify`, `screening.sanctions`, or `document.fetch`. A
+    configuration table maps the logical capability to a provider and a connector.
+
+    Replacing a vendor is a **binding row plus a connector file**, and **no process definition
+    changes** — which matters because definitions are versioned and long-lived. A vendor name inside
+    one would outlive the vendor.
+  </Step>
+  <Step title="Every domain concept enters as configuration">
+    Event types, subject types, workflows, task types, responsibility rules, channel policies, report
+    definitions. All seeded per deployment, none compiled in.
+  </Step>
+</Steps>
+
+## The gate that proves it
+
+Principles that everyone agrees with and nobody checks decay silently. This one is a grep, run in CI:
+
+```bash
+# tools/domain-terms.txt holds one term per line: every vendor name and every
+# industry word this deployment uses. Only integration/internal/connectors/ and
+# src/seed/ are allowed to contain them.
+grep -rEwinf tools/domain-terms.txt src/modules \
+  --exclude-dir=connectors \
+  && { echo "domain term leaked into core module code"; exit 1; }
+```
+
+<Warning>
+  **The `-w` flag is load-bearing.** Without word boundaries, a short vendor code matches inside an
+  unrelated identifier — and the first false positive is the moment somebody appends `|| true`.
+
+  **A gate's value depends entirely on it never crying wolf.**
+</Warning>
+
+The term list is extended whenever a new vendor or domain word is introduced. **Adding the term is
+part of adding the connector**, not a follow-up ticket.
+
+## Why this survives a change of ownership
+
+<Note>
+  This rule holds regardless of who owns the repository, and it survived a move between workspaces
+  for a reason that has nothing to do with where the folder lives:
+
+  **A core that knows the domain cannot be reused, and cannot be reasoned about without knowing the
+  business.**
+
+  Concrete names belong in seed data and connectors, where they are visible and enumerable.
+</Note>
+
+## Where domain vocabulary is allowed
+
+| Location | Allowed? | Why |
+| --- | --- | --- |
+| `integration/internal/connectors/` | ✅ | A connector *is* the vendor-specific part. That is its job |
+| `src/seed/` | ✅ | Seed data is the deployment's own vocabulary, by definition |
+| Anywhere else in `src/modules/` | ❌ | Fails the CI gate |
+| Configuration rows in the database | ✅ | Not code |
+| Process definitions | ❌ **for vendors** | They name logical capabilities only |
+
+<CardGroup cols={2}>
+  <Card title="Three layers" icon="layer-group" href="/engineering/three-layers">
+    The structural decision that follows from this one.
+  </Card>
+  <Card title="Company-agnostic in practice" icon="globe" href="/engineering/platform/company-agnostic">
+    What the rule costs, and where it is most likely to erode.
+  </Card>
+</CardGroup>

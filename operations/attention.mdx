@@ -1,0 +1,161 @@
+---
+title: "Attention"
+description: "The first screen you open — everything that needs a person, in one list"
+icon: "triangle-exclamation"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/ops-attention.webp"
+  alt="Ops · Attention — nine cards, scoped to operations"
+  noZoom
+/>
+
+## What it is
+
+**Attention** is the union of every queue in the platform. Six different parts of the system each
+promise that nothing which needs a person is dropped quietly; Attention is where all six of those
+promises show up in one place.
+
+<Note>
+  It **aggregates and owns nothing**. Every row belongs to a real screen elsewhere, and clicking it
+  takes you there. This is a deliberate constraint: it means Attention can never grow logic of its
+  own and start disagreeing with the thing it summarises.
+</Note>
+
+## What lands here
+
+| Row | Comes from | Why it needs you |
+| --- | --- | --- |
+| A task assigned to you | `task` | It is yours and it is not done |
+| An unclaimed task in your queue | `task` | Nobody has picked it up |
+| A task past its deadline | `task` | The SLA is breached |
+| A case waiting too long | `process` | A step has been waiting past its timer |
+| An event nobody configured | `automation` | `unmapped` — a reaction needs to be built |
+| A notification that reached nobody | `notification` | `no_recipient` — usually a gap in responsibility rules |
+| An automated step that gave up | `integration` | `dead` — it exhausted its retries |
+| A configuration loop | `automation` | Two workflows baiting each other |
+
+## It is scoped to Operations, and the exclusions are listed
+
+**Nine cards**, covering treasury money movement and customer money and identity.
+
+<Note>
+  Everything outside that remit is **named as a deliberate exclusion**, not dropped quietly: unmapped
+  events, guard failures, publisher and stream health, workflow configuration defects, the silent
+  configuration obligations, the cross-module dead-letter queue, callback signature failures, filing
+  and integrity.
+
+  Those belong to engineering and compliance, and they have their own surfaces.
+</Note>
+
+**The uncomfortable case is recorded rather than argued about.** A virtual-account provisioning
+request arrived and nothing reacted to it — *an operations fact whose fix is a workflow*. So the
+consequence is yours and the row is engineering's, and the boundary is written down so neither team
+assumes the other saw it.
+
+## Two cards carry a number. Seven carry a dash.
+
+| Card | Reads | Because |
+| --- | --- | --- |
+| Reached nobody | **1** | One threshold alert whose rule resolved to zero recipients |
+| Gave up | **2 causes across 3 actions** | Two distinct causes — one notifier outage counts **once**, not twice |
+| The other seven | **—**, with the reason | The underlying data does not exist yet, and **a zero would be a measurement** |
+
+<Warning>
+  **One card reads a dash twice over, and is drawn anyway.**
+
+  The *stopped control* card — an approval where the four-eyes exclusion left nobody eligible — has
+  neither the task data nor, until recently, any way to mark a task type as an approval.
+
+  It is rendered regardless, because **a control that can never report itself halted is worse news
+  than one reporting zero.**
+</Warning>
+
+## Reading the colours
+
+The colour vocabulary is the same everywhere in the product, so learning it once is enough.
+
+| Colour | Meaning | Examples |
+| --- | --- | --- |
+| **Green** | Everything configured to happen, happened | `dispatched` |
+| **Amber** | It completed and reached nobody, or nobody has claimed it | `no_recipient`, `unmapped` |
+| **Red** | It failed, or something was not recognised | `dead`, `unknown_subject` |
+| **Grey** | Recorded on purpose; no action | `suppressed`, `duplicate`, `observed` |
+
+<Note>
+  **On this screen there is no grey and no green at all** — six warn, three error.
+
+  A work queue has no *"fine"* state: neutral is kept out of it deliberately, and a card with nothing
+  to report renders a dash rather than a reassuring zero.
+</Note>
+
+<Warning>
+  **Amber is not "a mild red".** Amber means *the thing worked and reached nobody*. That is a
+  different problem from a failure, needs a different fix, and is the single most common thing you
+  will see here in the first months.
+</Warning>
+
+## The three problems that look similar and are not
+
+<AccordionGroup>
+  <Accordion title="no_recipient — the rules resolved to nobody" icon="user-slash">
+    A notification ran, applied the channel policy, asked *who is responsible for this?* — and the
+    answer was nobody.
+
+    **This is a configuration gap, not an outage.** Somebody needs to add a responsibility rule for
+    that combination. The item names which rule was evaluated, so you know exactly which one is
+    missing.
+  </Accordion>
+  <Accordion title="dead — an automated step exhausted its retries" icon="plug-circle-xmark">
+    A vendor call, a filing submission, or a notification was retried with backoff and never
+    succeeded.
+
+    **This is an outage or a broken destination.** It needs an engineer or an admin, not a
+    responsibility rule.
+
+    Both `no_recipient` and `dead` make their event `partial`, so they land in the same queue — which
+    is why the interface distinguishes them by the action's own status rather than by the event's.
+  </Accordion>
+  <Accordion title="unmapped — nobody has configured a reaction" icon="circle-question">
+    The event type is registered and the event arrived cleanly. There is simply no workflow for it
+    yet.
+
+    **This belongs to a configurator**, and the row carries a "build a workflow from this event"
+    action, because a workflow should only ever be built from a shape that has actually arrived.
+
+    This queue is designed to be able to **reach zero**. If it never empties, that is a signal in
+    itself.
+  </Accordion>
+</AccordionGroup>
+
+## Why this screen exists at all
+
+Six modules each promise to surface their own dead ends. Six queues is how a dead end goes unnoticed.
+
+The alternative that was rejected — one screen per module — leaves nobody with an aggregate view, and
+the first symptom is a permanent failure sitting unread in a queue nobody opens.
+
+<Note>
+  This is also the screen that makes the *"never a silent success"* promise checkable rather than
+  aspirational. If a class of failure does not appear here, that is a defect in the design, not an
+  acceptable omission.
+</Note>
+
+## What it deliberately does not do
+
+- **It does not let you act in place.** Every row navigates to the screen that owns it, because that
+  screen has the context and the permissions.
+- **It does not rank by a score.** Ordering is by deadline and severity, both of which are values on
+  the row rather than a computed opinion.
+- **It does not hide anything by default.** A filter is a choice you make, never a default the screen
+  makes for you.
+
+<CardGroup cols={2}>
+  <Card title="My tasks" icon="list-check" href="/operations/my-tasks">
+    Your own work, once you have picked it up from here.
+  </Card>
+  <Card title="Notifications" icon="bell" href="/operations/notifications">
+    The delivery log — where `no_recipient` is investigated.
+  </Card>
+</CardGroup>

@@ -1,0 +1,116 @@
+---
+title: "Queues"
+description: "Your team's shared pool — depth, unassigned work, and SLA health"
+icon: "users"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/queues.webp"
+  alt="Queues — depth, unassigned work, and SLA health per team"
+  noZoom
+/>
+
+## What a queue is
+
+A **queue** is one team's shared pool of work. Tasks land in a queue first and are then claimed by,
+or assigned to, a person.
+
+It is also the primary **permission boundary**. A compliance reviewer may read and act inside
+`queue:compliance` and not inside `queue:treasury` — enforced on the server, on every request.
+
+<Note>
+  **A hidden button is not a permission.** The interface mirrors your permissions so navigation makes
+  sense, but the server is the only enforcement point. Nothing you cannot see is protected only by
+  not being rendered.
+</Note>
+
+## What the screen answers
+
+| Question | Where |
+| --- | --- |
+| How much work is waiting on my team? | Depth |
+| How much of it has nobody picked up? | Unassigned |
+| Are we going to breach anything today? | SLA health |
+| Which kind of work is piling up? | The breakdown by task type |
+
+<Tip>
+  In the starting condition, *"how many deposits are waiting on compliance right now"* could not be
+  answered without a SQL query against production. This screen is that query, run continuously.
+</Tip>
+
+## Queues are not seniority levels
+
+This is the distinction most often got wrong when queues are first configured.
+
+Two teams reviewing the same subject for **different reasons** are two queues, not two tiers of one.
+
+<AccordionGroup>
+  <Accordion title="The worked example: an unattributable deposit" icon="money-bill-transfer">
+    Money arrives and the automatic attribution cannot decide whose it is. Two very different reviews
+    can follow:
+
+    - **Name review** → belongs to **operations**. Is this counterparty who we think it is?
+    - **Threshold review** → belongs to **compliance**. This amount crosses a reporting threshold.
+
+    They are not seniority levels of one queue. They are **different work, with different deadlines**,
+    and a person in one is usually not in the other.
+
+    Modelling them as one queue with an escalation level produces work in front of people who cannot
+    action it, and an SLA that means two different things depending on the row.
+  </Accordion>
+</AccordionGroup>
+
+## Escalation across two queues, without duplicate notification
+
+When work escalates from one team to another, both tiers keep the thread and **neither gets told
+twice**.
+
+This works because everything caused by one original fact carries the same **correlation id**. The
+second escalation is a new task with a new owner and a new deadline, and it is still part of the same
+story — so the case view shows one thread, not two disconnected items.
+
+## What a lead watches
+
+<CardGroup cols={2}>
+  <Card title="Depth that is not falling" icon="chart-line">
+    The queue is being filled faster than it is worked. This is a staffing or a threshold problem, and
+    the screen tells you which task type is responsible.
+  </Card>
+  <Card title="Unassigned work older than its reminder" icon="user-clock">
+    Nobody has claimed it. Either the responsibility rules point at a team with no capacity, or the
+    work is not visible enough.
+  </Card>
+  <Card title="Repeated SLA breaches on one task type" icon="clock">
+    The deadline is wrong, or the work is harder than the configuration assumes. Both are fixable
+    without a deploy.
+  </Card>
+  <Card title="Anything in Attention that is not a task" icon="triangle-exclamation">
+    `no_recipient` items in your domain usually mean a **hole in your responsibility rules** — work
+    that will silently not arrive next time either.
+  </Card>
+</CardGroup>
+
+## Changing who gets what
+
+Responsibility rules are **configuration**, edited in the interface, versioned, and audited with a
+before/after diff.
+
+Changing who is responsible for a kind of work does not require a deploy and does not require an
+engineer. It does produce an audit entry with your name on it — because changing who is notified
+about a compliance failure is exactly as consequential as a code change.
+
+<Warning>
+  A responsibility-rule change does **not** retroactively change who can see historical work.
+  Authorization scope is derived once, when the work is created, precisely so that a rule change
+  cannot silently alter the visibility of the past.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Worked scenario: two-tier escalation" icon="money-bill-transfer" href="/operations/scenarios/deposit-escalation">
+    Operations and compliance, one deposit, one thread.
+  </Card>
+  <Card title="Notifications" icon="bell" href="/operations/notifications">
+    Where a hole in the responsibility rules shows up first.
+  </Card>
+</CardGroup>

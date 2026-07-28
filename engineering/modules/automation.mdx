@@ -1,0 +1,305 @@
+---
+title: "automation"
+description: "The reflex layer — two doors, one matcher, an ordered action list"
+icon: "bolt"
+mode: "wide"
+---
+
+> **The reflex layer.** Two ingress doors, one matcher, and an ordered list of independent actions.
+> Stateless per event: nothing is ever "in progress" here.
+
+| | |
+| --- | --- |
+| Schema | `automation` |
+| Layer | Reflex |
+| Depends on | `process`, `task`, `notification`, `integration`, `directory`, `reporting` — all via `client/` |
+| Depended on by | *nothing — it is the top of the call graph and the **only stream reader*** |
+| Slice | **1 — Reflex** |
+| Extraction trigger | Ingest volume needs a scaling profile the rest of the platform does not |
+
+## Why it is its own module
+
+`automation` is the platform's front door. Everything that happens anywhere — an external system's
+fact, a task reaching a terminal state, a provider callback completing — arrives here as an event and
+leaves as an ordered list of actions.
+
+<Note>
+  **It is separate from `process` for one reason: it holds no state between events.** An event is
+  matched, intent is written, and the event is done.
+
+  If it had to remember that step 2 of a case finished while step 3 waits for a person, it would be a
+  state machine living inside a stream consumer — the exact failure this architecture is built to
+  avoid.
+</Note>
+
+It is **not** split into `automation` + `workflow`. A workflow *is* automation's core concept: the
+ordered action list bound to a matched event type. Separating the trigger from what it triggers pays
+the full price of a module boundary for nothing.
+
+## Internal structure
+
+```
+automation/internal/
+├── ingest/      both doors, the guards, the ingest row
+├── matcher/     condition evaluation, priority ordering, exclusive short-circuit
+├── actions/     the eight action types, each dispatched through a client/
+└── dispatch/    the outbox pump for events this module publishes
+```
+
+## The screens it owns
+
+<Tabs>
+  <Tab title="Events">
+    <img src="/images/screens/events.webp" alt="Events — the ingest history" noZoom />
+
+    Every event received, whatever its disposition, grouped by business domain. Including the ones
+    that produced nothing.
+  </Tab>
+  <Tab title="Event detail">
+    <img src="/images/screens/event-detail.webp" alt="Event detail — why this event did that" noZoom />
+
+    The answer to *"why did this event do that?"* — the signal path, the workflows that matched, and
+    each action's own outcome and attempt count.
+  </Tab>
+  <Tab title="Workflows">
+    <img src="/images/screens/workflows.webp" alt="Workflows — condition, priority, exclusive, disposition, actions" noZoom />
+
+    Condition, priority, exclusive, disposition, and the ordered action list.
+
+    **Disposition is the one coloured categorical dimension** on this screen: `act` is silent because
+    it is the majority, `observe` and `suppress` carry pills.
+  </Tab>
+  <Tab title="Event types">
+    <img src="/images/screens/event-types.webp" alt="Event types — the registry that creates ingress endpoints" noZoom />
+
+    The registry. **Registering a row creates its HTTP ingress endpoint immediately** — no deploy, no
+    controller.
+  </Tab>
+  <Tab title="Subject types">
+    <img src="/images/screens/subject-types.webp" alt="Subject types — shape validation, never existence" noZoom />
+
+    Owns the distinction between validating a reference's **shape** and validating its **existence**.
+
+    The reference stays opaque, so the format is the only checkable thing — and it is rendered
+    verbatim rather than described.
+  </Tab>
+  <Tab title="Record types">
+    <img src="/images/screens/record-types.webp" alt="Record types — typed, retained projections" noZoom />
+
+    The supply side of the *observe versus record* refusal: the only configuration that can satisfy a
+    retention obligation longer than the ingest window.
+  </Tab>
+  <Tab title="Publishers">
+    <img src="/images/screens/publishers.webp" alt="Publishers — who may inject events" noZoom />
+
+    A **global resource** — whoever edits it decides who may inject events, and into which domains.
+
+    Default listing is **all**, not active-only: hiding inactive keys hides the ones most likely to be
+    a problem.
+  </Tab>
+  <Tab title="Streams">
+    <img src="/images/screens/streams.webp" alt="Streams — the door with no API key" noZoom />
+
+    The one door with **no API key** — network position is the boundary, and the screen states it
+    rather than leaving it to be assumed.
+  </Tab>
+</Tabs>
+
+## Two configuration-safety screens
+
+<CardGroup cols={2}>
+  <Card title="Consequence preview" icon="eye" href="/engineering/events/matching-and-actions">
+    What **would** happen. Nothing written, nothing published, and the pane says so. Non-matches are
+    listed, never hidden.
+  </Card>
+  <Card title="Simulator" icon="play" href="/engineering/events/matching-and-actions">
+    Fires a **real** event through the **real** transport. Deliberately a separate screen, with
+    type-to-confirm, so "which button fires real traffic?" has one answer.
+  </Card>
+</CardGroup>
+
+## Principal tables
+
+Generated from `migrations/automation/001-init.sql` — never drawn by hand.
+
+```mermaid
+erDiagram
+    publishers {
+        uuid id PK
+        varchar code
+        varchar name
+        varchar api_key_hash
+        text[] allowed_domains
+        boolean active
+        timestamptz last_used_at
+        int rate_limit_per_sec
+        more 5_further_columns
+    }
+    event_keys {
+        uuid event_id PK
+        timestamptz received_at
+        timestamptz created_at
+    }
+    stream_subscriptions {
+        uuid id PK
+        varchar stream_key
+        varchar consumer_group
+        boolean active
+        varchar last_id
+        varchar start_offset
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    subject_types {
+        uuid id PK
+        varchar code
+        varchar name
+        varchar ref_format
+        varchar ref_note
+        boolean composite
+        jsonb scope_selector
+        boolean active
+        more 2_further_columns
+    }
+    event_types {
+        uuid id PK
+        varchar code
+        varchar domain
+        text[] subject_type_codes
+        jsonb data_schema
+        interval declared_retention
+        boolean http_ingress
+        jsonb sample_envelope
+        more 3_further_columns
+    }
+    record_types {
+        uuid id PK
+        varchar code
+        varchar name
+        varchar subject_type
+        jsonb field_schema
+        interval retention
+        boolean active
+        timestamptz created_at
+        more 1_further_columns
+    }
+    workflows {
+        uuid id PK
+        uuid event_type_id FK
+        varchar name
+        varchar owner_team
+        jsonb condition
+        int priority
+        boolean exclusive
+        varchar disposition
+        more 7_further_columns
+    }
+    workflow_actions {
+        uuid id PK
+        uuid workflow_id FK
+        int seq
+        varchar action_type
+        jsonb config
+        boolean continue_on_failure
+        boolean active
+        timestamptz created_at
+        more 1_further_columns
+    }
+    ingested_events {
+        uuid id
+        uuid event_id
+        varchar event_type_code
+        varchar subject_type
+        varchar subject_ref
+        jsonb envelope
+        varchar status
+        uuid[] matched_workflow_ids
+        more 10_further_columns
+    }
+    action_executions {
+        uuid id
+        uuid ingested_event_id
+        uuid workflow_action_id
+        int seq
+        varchar action_type
+        varchar status
+        int attempt_count
+        varchar idempotency_key
+        more 8_further_columns
+    }
+    action_execution_keys {
+        varchar idempotency_key PK
+        uuid action_execution_id
+        timestamptz started_at
+        timestamptz created_at
+    }
+    records {
+        uuid id PK
+        varchar record_type
+        varchar subject_type
+        varchar subject_ref
+        jsonb data
+        uuid correlation_id
+        uuid causation_id
+        timestamptz recorded_at
+        more 1_further_columns
+    }
+    outbox {
+        bigint id PK
+        uuid aggregate_id
+        varchar target
+        varchar operation
+        jsonb payload
+        varchar idempotency_key
+        uuid correlation_id
+        uuid causation_id
+        more 8_further_columns
+    }
+    event_types ||--o{ workflows : "event_type_id"
+    workflows ||--o{ workflow_actions : "workflow_id"
+```
+
+<Note>
+  **These tables are partitioned:** `action_executions` · `ingested_events`.
+
+  A partitioned table **cannot carry a global unique constraint**, which is why `action_execution_keys` and `event_keys` exists beside it, unpartitioned. An ER diagram cannot express that, so it is stated here.
+</Note>
+
+<Warning>
+  **No relationship line leaves this schema, and that is the boundary rule rather than an omission.** The 2 lines above are real foreign keys inside `automation`.
+
+  Bare cross-schema references — drawn nowhere, because the database does not enforce them: **Zero** — `automation` names subjects, never other modules' rows. Its cross-module reach is the eight action types, not a column.
+</Warning>
+
+Three of those exist **because a partitioned table cannot carry the unique constraint its module
+depends on** — see [idempotency](/engineering/events/idempotency).
+
+## The rules this module implements
+
+| Rule | Where it is specified |
+| --- | --- |
+| Two doors, one identical matcher | [Ingress](/engineering/events/ingress) |
+| The envelope, and the seven forbidden fields | [Envelope](/engineering/events/envelope) |
+| Four guards — duplicate, depth, cycle, action re-execution | [Idempotency](/engineering/events/idempotency) |
+| All matching workflows run; priority orders; exclusive overrides | [Matching](/engineering/events/matching-and-actions) |
+| Eleven ingest statuses and their precedence | [Lifecycle](/engineering/events/lifecycle) |
+| The continuous retention invariant | [Lifecycle](/engineering/events/lifecycle) |
+
+## Being the only stream reader
+
+<Note>
+  Internal modules are publishers **exactly like external systems**. That is what makes "two doors,
+  one pipeline" true for internal traffic as well.
+
+  It also puts ordering, idempotency, and **both loop guards** in one place instead of four — which is
+  the entire argument against per-module stream consumers.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="The event contract" icon="file-contract" href="/engineering/events/contract">
+    Everything this module enforces.
+  </Card>
+  <Card title="process" icon="diagram-project" href="/engineering/modules/process">
+    Where anything that needs to remember goes.
+  </Card>
+</CardGroup>

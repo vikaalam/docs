@@ -1,0 +1,131 @@
+---
+title: "Control map"
+description: "Which platform mechanism supports which control — and which controls it does not touch"
+icon: "table-list"
+---
+
+A mapping from control objectives to the mechanism that supports them. This is a **support** map, not
+a certification: the platform provides the mechanism, the control environment still has to use it.
+
+## Evidence and record-keeping
+
+| Control objective | Mechanism | Where |
+| --- | --- | --- |
+| Activity is recorded with an actor and a timestamp | Audit entry written **inside the business transaction**; actor never null | [Audit trail](/compliance/audit-trail) |
+| The record cannot be altered | Append-only enforced by **database privilege**; no update or delete grant exists for the application | [Audit trail](/compliance/audit-trail) |
+| Alteration would be detectable | Hourly Merkle seals over closed intervals | [Integrity](/compliance/integrity-and-holds) |
+| Unauthorised attempts are recorded | `rejected` audit entries, committed **independently** of the refused action | [Audit trail](/compliance/audit-trail) |
+| A decision can be reconstructed in order | Correlation id on every row on a causal path | [Trace](/compliance/trace) |
+| Records are retained for a defined period | Per-store retention, per-record-type retention, continuously verified against declared obligations | [Retention](/compliance/retention-and-erasure) |
+
+## Segregation of duties
+
+| Control objective | Mechanism | Status |
+| --- | --- | --- |
+| Approval requires a second person | Four-eyes step, enforced by the process engine | ✅ Specified |
+| The approver is not the prior actor | Exclusion by named step, validated at publish time | ✅ Specified |
+| **The approver is not the maker** | An explicit `excludeTriggerActor` flag adds the triggering event's actor to the same exclusion set | ✅ **Closed 2026-07-28** — see below |
+| An approval that stopped is distinguishable from a quiet queue | A task type carries an `is_approval` marker | ✅ Closed 2026-07-27 |
+| Work is visible only to the right team | Queue scope, evaluated server-side on every request | ✅ Specified |
+| Sensitive resources need a separate grant | Destinations, credentials, and publishers are separately-granted global resources | ✅ Specified |
+| Permissions are authored under review | Authored in the estate's central auth service, **never in this product** | ✅ Specified |
+
+<Note>
+  **The maker exclusion was a real gap, and it is closed.**
+
+  The exclusion mechanism accepted step codes within a case definition. Someone who registered an item
+  *before* the case existed is not a step actor, so the first approval could be assigned to them — the
+  one control the audited source system **did** implement by hand, at both approval routes.
+
+  Closed on **2026-07-28** by an explicit `excludeTriggerActor` flag that adds the triggering event's
+  actor to the same exclusion set the step codes populate. It **defaults to off**, so no published
+  definition changes meaning until someone edits it. An exclusion that empties the queue **escalates**
+  — never a silent self-approval.
+
+  It was the only open item that was a **control that was off**, rather than a number or a name that
+  was missing.
+</Note>
+
+## Completeness of operational response
+
+| Control objective | Mechanism |
+| --- | --- |
+| Every event is recorded, including ones that produced nothing | The ingest history records **every arrival** |
+| A fact is acted on exactly once | Idempotency by occurrence id — a redelivery is dropped |
+| An unconfigured event type is visible, not lost | `unmapped`, as a work queue that can reach zero |
+| A notification that reached nobody is visible | `no_recipient` makes its event `partial`, never green |
+| An automated step that gave up is visible | `dead`, in the same queue |
+| A case waiting on nothing is caught | A periodic guard looks for *waiting with no future timer* |
+| A skipped procedural step leaves a trace | The step is a task in a state, on the case |
+
+## Data protection
+
+| Control objective | Mechanism | Status |
+| --- | --- | --- |
+| Erasure can be honoured without destroying the record | Crypto-shredding — destroy the per-subject key | ⚠️ Must be in place **before the first personal data is written** |
+| An erasure can be **proven** | Key registry with a destruction state, plus an audit entry | ✅ Specified |
+| A legal hold blocks destruction | The hold refuses the key destruction; the refusal is audited | ⚠️ One interlock defect recorded — a hold scoped by correlation id is not found by a subject query |
+| Personal data is minimised in long-retention stores | Typed records are chosen-field and redactable; raw envelopes are shredded | ✅ Specified |
+| Vendor responses containing identity documents are redacted | Field-level redaction policy | ⚠️ **Open — must be agreed with compliance before that module ships** |
+
+## Change control
+
+| Control objective | Mechanism | Note |
+| --- | --- | --- |
+| Configuration change is attributable | Audit entry with actor, before, after, and changed fields | — |
+| Configuration change is reviewable | Export to a **diffable file** | ⚠️ **Mandatory before production**, not optional |
+| A case is judged against the rules in force | Instances pin their definition version; old versions are never deleted | — |
+| Blast radius is visible before a change | The consequence preview — nothing is written and nothing published | — |
+| Real traffic is fired deliberately | A separate simulator screen with type-to-confirm | So that "which button fires real traffic?" has exactly one answer |
+
+<Warning>
+  **The honest cost:** configuration is not in git. An operator who can edit a workflow can change who
+  is notified about a compliance failure. That is exactly as sensitive as a code deploy, and the two
+  mitigations above are what make it reviewable in the same way.
+</Warning>
+
+## Regulatory output
+
+| Control objective | Mechanism |
+| --- | --- |
+| A report is reproducible | Period, watermark, row count, **checksum** |
+| A report is produced under known rules | Pinned definition version |
+| Output goes only to approved recipients | **Named destinations**, allowlisted, no free-form URLs |
+| Filing is proven, not claimed | The **stored receipt** — the run is not done until it returns |
+| A filing is not submitted twice | Mark-before-call plus reconciliation, on our side of the wire |
+| Quality control was performed | A four-eyes step, not a chat message |
+
+## What this platform does not do
+
+Stated so it is never assumed.
+
+| Not covered | Where it lives |
+| --- | --- |
+| Transaction monitoring rules and thresholds | The monitoring system. This platform reacts to its determinations |
+| Customer risk scoring | Not defined. Named as a possible later phase, **not specified** |
+| Sanctions list management | The screening vendor, behind a logical capability |
+| Identity and access provisioning | The company identity provider and the central auth service |
+| The ledger, balances, or the customer record | The source systems. This platform holds opaque references |
+| Deciding a compliance outcome | A person. The platform routes, records, and holds the clock |
+
+## Where the platform cannot help at all
+
+<Warning>
+  **It cannot ingest what was never said.**
+
+  Some occurrences never become facts in the source system — a reportable group dropped by a branch
+  with no else and no counter; a provider callback rejected before anything is written, so not even
+  the rejection has an id; a check that only runs as a side effect of another call succeeding.
+
+  **32 such occurrences are itemised**, each with the change its source service needs. Those changes
+  are prerequisites, not enhancements.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Honest limits, in full" icon="triangle-exclamation" href="/compliance/limitations">
+    Everything this does not prove, and what would close each gap.
+  </Card>
+  <Card title="Publishing hazards" icon="tower-broadcast" href="/engineering/publishing/hazards">
+    The engineering side of what a source service must change first.
+  </Card>
+</CardGroup>

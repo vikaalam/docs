@@ -1,0 +1,123 @@
+---
+title: "Reconstructing a decision"
+description: "One correlation id, everything that followed from it, in order"
+icon: "timeline"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/trace.webp"
+  alt="Trace — everything that happened under one correlation id, in order"
+  noZoom
+/>
+
+## The question this answers
+
+*"What happened here, in what order, and who did each part?"*
+
+Every row the platform creates on a causal path carries a **correlation id** — the thread. One
+original fact, the event it produced, the case it opened, the tasks it created, the notifications it
+sent, the vendor calls it made, and the report it filed all share it.
+
+Trace is that thread, read whole.
+
+## What a trace shows
+
+| Column | Answers |
+| --- | --- |
+| **When** | Both when the thing happened and when the platform learned about it |
+| **What** | The action or the state change |
+| **Who** | The actor — a person, a system, a publisher, or a process. Never blank |
+| **Where** | Which module the change happened in |
+| **Store** | Whether this row comes from the audit record or from the ingest history |
+
+## Two stores, not four
+
+This is a limit worth understanding before you rely on a trace in an assessment.
+
+<Note>
+  A trace reads **exactly two** stores: the **audit record** (changes to this platform's own state)
+  and the **ingest history** (what arrived).
+
+  It deliberately does **not** read the two projection stores — records and report facts — because a
+  projection write is *already represented* by its own audit entry. Reading them a second time would
+  list one occurrence twice.
+</Note>
+
+So a store label on a trace row has a vocabulary of two, not four. That is a correctness property,
+not a simplification.
+
+## The count of modules is not a coverage metric
+
+<Warning>
+  **A module can be consulted without changing state, and correctly produce no row.**
+
+  A responsibility rule that resolved to nobody changes nothing, so it writes no audit entry. Its
+  finding survives elsewhere — as the action status that made the event `partial`.
+
+  So "only four modules appear in this trace" does not mean four modules were involved. Do not read
+  the number as completeness.
+</Warning>
+
+## Reading density
+
+Trace rows are rendered more compactly than elsewhere in the product, because a trace is **read
+whole** rather than scanned. That is a deliberate density choice, not an inconsistency.
+
+## What a trace is good for
+
+<CardGroup cols={2}>
+  <Card title="An incident review" icon="magnifying-glass">
+    What arrived, what the platform decided, what people did, and where the delay was.
+  </Card>
+  <Card title="A regulator's question about one case" icon="scale-balanced">
+    The whole life of one determination, with actors and times, in one list.
+  </Card>
+  <Card title="Proving a control was applied" icon="user-check">
+    Both approvals, both actors, and the refusal if someone tried to take both.
+  </Card>
+  <Card title="Finding where a notification went" icon="bell">
+    Including the case where it went nowhere — a `no_recipient` delivery is on the thread like
+    everything else.
+  </Card>
+</CardGroup>
+
+## What a trace is not good for
+
+| Not this | Use instead |
+| --- | --- |
+| "How many of these happened last quarter?" | A report definition, or the records store |
+| "What is the customer's current status?" | The source system — this platform does not own it |
+| "What did the message say?" | The notification driver holds the templates. The platform sends data, not prose |
+| "Everything that ever touched this customer" | A trace is per-thread, not per-subject. Several threads may concern one subject |
+
+## Why this was impossible before
+
+In the audited estate, one state change produced **two chat messages, fired back to back from the
+same function, to two different channels, with no shared correlation id**.
+
+They described one thing. Nothing tied them together, and nothing tied either of them to the database
+row they were about — a transaction id was included, the row id was not.
+
+<Note>
+  A correlation id is one column, and it is free to carry. Its absence was not a technical constraint;
+  nobody had asked for it, because nothing was ever expected to reconstruct a story.
+</Note>
+
+## The one gap, stated
+
+Delivery rows originally carried **no correlation id at all** — so the last mile, the only part a
+person actually experiences, fell out of the thread.
+
+That was found by reading the module schemas against each other rather than one at a time, and it is
+fixed: every row on a causal path carries the thread, and the rule is checkable rather than a
+convention.
+
+<CardGroup cols={2}>
+  <Card title="The audit trail" icon="shield-check" href="/compliance/audit-trail">
+    What each row on a trace actually contains.
+  </Card>
+  <Card title="Integrity" icon="fingerprint" href="/compliance/integrity-and-holds">
+    Whether the record you are reading has been tampered with.
+  </Card>
+</CardGroup>

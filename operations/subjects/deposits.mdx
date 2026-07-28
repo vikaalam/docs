@@ -1,0 +1,91 @@
+---
+title: "Deposits"
+description: "Money arriving — the work and the signals, not a deposit list"
+icon: "money-bill-transfer"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/ops-deposits.webp"
+  alt="Ops · Deposits — refs, signals, and the state of each"
+  noZoom
+/>
+
+This is the operational face of the [unattributable-deposit
+scenario](/operations/scenarios/deposit-escalation), built for transaction and user management rather
+than for engineering.
+
+<Warning>
+  **It is deliberately not a deposit list.** There is no deposit table here, and a deposit reference is
+  never resolved against one. The screen shows the **work** and the **signals** about deposits, and
+  says so in a line under the title.
+
+  It carries **no row checkbox** and **no link into the source system** — both would promise an
+  operation on a handle this product cannot act on.
+</Warning>
+
+## What is on it
+
+Seven deposit references, thirteen signals — every deposit-subject event in the sample set.
+
+| Column | Carries |
+| --- | --- |
+| **Ref** | The opaque deposit reference. Mono, because it is an exact value you may need to paste |
+| **Signal** | What was said about it, and by whom |
+| **State** | **The one coloured field on the screen** |
+| **Result** | What it produced — a task, a case signal, or nothing |
+
+<Note>
+  **One strong colour signal per row**, and here it is `state`. Everything else stays quiet. That is
+  the same restraint rule the whole product follows, applied to the field actually worth scanning.
+</Note>
+
+## Absences, each with its reason
+
+Five cells on this screen are empty on purpose, and each says why rather than showing a zero or a
+dash alone:
+
+- Two deposits have **no amount** — the publisher did not send one
+- One has **no sender**
+- One case has **no status**
+- One task has **no deposit** attached
+
+<Warning>
+  **An absence is not a zero.** *"No amount was sent"* is a publisher gap. *"The amount is zero"* is a
+  fact about money. Rendering the first as the second would be a false statement about a payment.
+</Warning>
+
+## One conflict left visible
+
+<Warning>
+  **The sample data and the measured catalogue disagree about what these events are called.**
+
+  The fixtures say `treasury.deposit.attributed` and `treasury.deposit.attribution_failed`.
+
+  The catalogue measured from the source service says `customer.deposit.received` and
+  `customer.deposit.unattributed`.
+
+  Both are on the canvas. **Neither was quietly picked.**
+</Warning>
+
+Why that matters to you rather than only to engineering: an event type is also the thing a workflow
+matches on. Two names for one occurrence is precisely how a configured reaction silently stops
+firing — and this one is caught while it is still a document disagreement rather than a production
+one.
+
+## What you actually do here
+
+Nothing, on this screen. It is a **reading** surface.
+
+The work it points at lives in [My tasks](/operations/my-tasks) and
+[Cases](/operations/cases); anything that needs a person right now surfaces on
+[Attention](/operations/attention).
+
+<CardGroup cols={2}>
+  <Card title="The full scenario" icon="route" href="/operations/scenarios/deposit-escalation">
+    A deposit nobody can attribute, escalated across two teams — including the configuration trap.
+  </Card>
+  <Card title="Why there is no deposit table" icon="ban" href="/operations/subjects">
+    The rule all four subject screens obey.
+  </Card>
+</CardGroup>

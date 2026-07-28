@@ -1,0 +1,158 @@
+---
+title: "Six recurring patterns"
+description: "Every screen is built from one of six shapes"
+icon: "shapes"
+mode: "wide"
+---
+
+A new screen starts by choosing which of these six it is. That keeps forty-seven screens learnable as
+six.
+
+## 1 · List → detail
+
+<img
+  src="/images/screens/deliveries.webp"
+  alt="A list with a detail route — the most common shape in the product"
+  noZoom
+/>
+
+The most common shape. A filtered table, and a detail view reachable by a **real route** rather than
+a transient panel — so a row can be linked to, shared, and reloaded.
+
+| Rule | Why |
+| --- | --- |
+| The list's first column carries the status signal | So a page reads as a shape before it reads as words |
+| Filters are explicit, never defaults the screen chose for you | A hidden default is a lie about what you are looking at |
+| Detail is a route, not just a panel | An operator sends a colleague a link, not instructions to find a row |
+
+## 2 · Configuration editor
+
+<img
+  src="/images/screens/channel-policies.webp"
+  alt="A configuration editor — with its history embedded"
+  noZoom
+/>
+
+Editing something that changes what the platform does.
+
+<Note>
+  **Every configuration editor embeds its own audit history.** Who changed this, when, and what it
+  looked like before — on the same screen as the thing being changed, not filed away in another
+  module.
+
+  That is the design paying back the cost of configuration living in a database rather than in git.
+</Note>
+
+## 3 · Simulator
+
+<img
+  src="/images/screens/consequence-preview.webp"
+  alt="Consequence preview — what would run, and what would not"
+  noZoom
+/>
+
+Answering *"what would happen?"* without making it happen.
+
+<Steps>
+  <Step title="Nothing is written and nothing is published">
+    **And the pane header says so**, rather than leaving it to trust.
+  </Step>
+  <Step title="Non-matches are listed, never hidden">
+    Seeing why a workflow did **not** match is the entire point. A simulator that shows only matches
+    answers half the question.
+  </Step>
+  <Step title="An active exclusive suppressor renders first">
+    And everything below it greys out as *would not run* — so the override is visible as a cause, not
+    inferred from an absence.
+  </Step>
+</Steps>
+
+## 4 · Work queue
+
+<img
+  src="/images/screens/attention.webp"
+  alt="Attention — the union of six modules' queues"
+  noZoom
+/>
+
+Everything that needs a person. **Attention** is the largest instance, unioning six modules' queues.
+
+<Warning>
+  **It aggregates and owns nothing.** Every row belongs to a real screen elsewhere and navigates there.
+
+  That constraint is what stops the screen growing logic of its own and disagreeing with the thing it
+  summarises — **and it is a specification, not a preference.**
+</Warning>
+
+This is also the pattern that makes *"never a silent success"* checkable rather than aspirational: if
+a class of failure does not appear in a work queue, that is a defect in the design.
+
+## 5 · Versioned publish
+
+<img
+  src="/images/screens/process-definitions.webp"
+  alt="Versioned definitions — drafts, published versions, and what is running on which"
+  noZoom
+/>
+
+For things that have a **draft** and a **published** state, where already-running work keeps the
+version it started on.
+
+| Shows | Because |
+| --- | --- |
+| Which version is published | It is what new work will use |
+| What is running on which version | Old versions are never deleted, and a case is judged against the one in force when it started |
+| The draft, and how it differs | Publishing is consequential and must be reviewable first |
+
+## 6 · Consequential action
+
+<img
+  src="/images/screens/audit-export.webp"
+  alt="Audit export — an inline confirmation, with columns as part of the form"
+  noZoom
+/>
+
+Actions that cannot be undone, or that send real traffic, or that widen what leaves the system.
+
+<Steps>
+  <Step title="The blast radius is measured, not described">
+    **A count, from the data.** An invented number is worse here than no number, because it looks
+    authoritative.
+  </Step>
+  <Step title="What will NOT happen is stated too">
+    Half of a confirmation's value is ruling things out.
+  </Step>
+  <Step title="Confirmation is inline where the body is already the confirmation">
+    A dialogue stacked on a form that is already the confirmation **trains people to dismiss
+    dialogues**.
+  </Step>
+  <Step title="Type-to-confirm only where real traffic is fired">
+    The simulator requires typing the event type code. Nothing else does — friction spent everywhere is
+    friction that stops meaning anything.
+  </Step>
+</Steps>
+
+## The rule the patterns share
+
+<Note>
+  **Absences are rendered as absences, with the reason stated.**
+
+  Where a value has no source in the data model, the design draws it as absent and says why — rather
+  than inventing a plausible number.
+
+  A dash and a *"not recorded"* mean different things and are **never collapsed**: a dash is a null in
+  the data model; *not recorded* is a column with no source.
+</Note>
+
+This is why several screens carry a sentence explaining what is missing. Those sentences are
+**specifications**, not placeholders — they record a gap in the schema that a screen deliberately did
+not paper over.
+
+<CardGroup cols={2}>
+  <Card title="The app shell" icon="window-maximize" href="/design/navigation">
+    What every pattern sits inside.
+  </Card>
+  <Card title="The gallery" icon="images" href="/design/screens/work">
+    All 47 screens.
+  </Card>
+</CardGroup>

@@ -1,0 +1,183 @@
+---
+title: "Regulatory reporting"
+description: "Reproducible runs, named destinations, and proof that a filing was accepted"
+icon: "file-invoice"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/report-runs.webp"
+  alt="Report runs — status, definition, period, watermark, rows, checksum, duration"
+  noZoom
+/>
+
+## The problem this replaces
+
+<Warning>
+  **"We filed it" is a claim. A claim does not survive an audit three years later**, when the analyst
+  has left, the spreadsheet has been edited, and the regulator's portal has been redesigned.
+</Warning>
+
+In the starting condition:
+
+- The report is built by hand — four systems, a spreadsheet, a template document, an export.
+- The numbers are whatever those systems returned **that afternoon**. Re-running next year returns
+  different numbers, and nobody can say whether that is a correction or an error.
+- The file is uploaded by whoever has the portal credentials.
+- The proof of filing is **a screenshot in a shared drive**.
+- Quality control is "someone senior looked at it", evidenced by a chat message.
+- If the regulator rejects it, the rejection email lands in one person's inbox.
+
+## What a run carries
+
+Every column here exists to answer a question a reviewer will ask.
+
+| Field | Answers |
+| --- | --- |
+| **Definition and version** | Which report, produced by which version of its rules |
+| **Period** | What window of time it covers |
+| **Watermark** | The point in the data the run read up to — so a re-run is comparable |
+| **Rows** | How many facts went in |
+| **Checksum** | Whether two runs of the same period produced the same output |
+| **Duration** | How long it took |
+| **Status** | Pending, running, succeeded, or failed |
+
+<Note>
+  **The checksum is the reproducibility claim made checkable.** Two runs of the same definition
+  version over the same period with the same watermark should produce the same checksum. When they do
+  not, that is a finding — surfaced on the run, not discovered by comparing files by hand.
+</Note>
+
+## Definitions are versioned, and a run pins one
+
+<img
+  src="/images/screens/report-definitions.webp"
+  alt="Report definitions — versioned, each with a named destination"
+  noZoom
+/>
+
+Editing a report definition creates a new version. Existing runs keep the version they were produced
+under.
+
+Reading a filing from two years ago therefore tells you **which rules produced it** — the only
+version that matters in an assessment.
+
+## Destinations are named, never URLs
+
+<img
+  src="/images/screens/destinations.webp"
+  alt="Destinations — named rows, with their resolution state"
+  noZoom
+/>
+
+A destination is a **configured row with a name**: `regulator-str-filing`, `fintrac-lvctr`. Not an
+endpoint typed into a field.
+
+<Warning>
+  **A free-form URL in a UI-editable field is prohibited everywhere in the product.** The destinations
+  screen is the single deliberate exception the rule was written around, and it is a **separately
+  granted global resource** — because whoever edits it decides where data goes.
+</Warning>
+
+Three properties follow:
+
+<CardGroup cols={3}>
+  <Card title="Enumerable" icon="list">
+    You can answer "where does our data go?" by reading a table, not by grepping production
+    configuration.
+  </Card>
+  <Card title="Guarded" icon="shield">
+    An allowlist, private-network blocking, and no redirect following. One place, so it is actually
+    reviewed.
+  </Card>
+  <Card title="Auditable" icon="clock-rotate-left">
+    Changing one produces an audit entry with an actor and a before/after.
+  </Card>
+</CardGroup>
+
+<Note>
+  A destination referenced by nothing renders as **unreferenced** — a neutral state, never a warning.
+  An unused destination is not a problem; an unknown one is.
+</Note>
+
+## A run is not done until a receipt returns
+
+This is the single most important sentence on this page.
+
+<Steps>
+  <Step title="The run produces an artifact">
+    Stored, retained, and subject to legal hold like any other artifact.
+  </Step>
+  <Step title="It is submitted through the single outbound door">
+    The only component that holds credentials and the only one that can make an outbound call.
+  </Step>
+  <Step title="The submission is recorded as an invocation">
+    With its request, its outcome, and its timing.
+  </Step>
+  <Step title="The receipt is stored as the evidence">
+    **Not a pointer to it.** The submission record retains the receipt itself, because the invocation
+    it points at is kept for a much shorter time than the filing is.
+  </Step>
+</Steps>
+
+<Warning>
+  **The stored receipt, not the pointer, is the evidence.** A submission record retained for years
+  that references an invocation retained for months is a proof that expires on a schedule nobody
+  intended.
+</Warning>
+
+## Where an effect must happen at most once
+
+A regulatory filing is the canonical case: filing twice is a real problem.
+
+<Note>
+  Sending an idempotency header to the receiving system is correct and costs nothing. **Relying on it
+  is an assumption dressed as a contract** — a third-party regulator gateway may honour it, ignore it,
+  or implement it differently, and you find out during an incident.
+
+  So at-most-once is achieved **on our side of the wire**: mark before calling, in its own
+  transaction, then reconcile by querying status rather than blindly resending.
+</Note>
+
+## Quality control is a step, not a chat message
+
+Where a report requires review before filing, that review is a **human step with a four-eyes
+control** — the drafter cannot be the approver, and an attempt to be both is recorded as a rejected
+action.
+
+## The gaps, stated
+
+<Warning>
+  **Some reportable occurrences cannot be published because they never become facts in the source
+  system.**
+
+  The clearest example found: a reportable group over the statutory threshold whose currency matches
+  neither configured list, dropped by a two-branch condition with **no else, no log, and no counter**.
+
+  There is also one genuine *accepted-but-not-recorded* case: the provider holds a filing, the local
+  status write-back affects fewer rows than expected, and the next run re-files those records.
+
+  **32 such occurrences are itemised**, each with the change its source service needs. This platform
+  cannot ingest what was never said.
+</Warning>
+
+<Note>
+  **A claim that was withdrawn, kept visible on purpose.** An earlier version of this analysis said a
+  rejected regulatory filing in one service was *"swallowed by its own error handler and counted as
+  submitted"*. Re-measured in the code — **it is not**, and the claim is withdrawn.
+
+  The rejection path is covered: the response interceptor throws before the status write-back, the
+  failure propagates, the submitted counter is not incremented, and the failure *is* notified.
+
+  The real reporting gaps are **omission**, not swallowed rejection. Correcting a checkable claim
+  matters more than keeping the story tidy.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="A filing, walked end to end" icon="scale-balanced" href="/compliance/str-walkthrough">
+    A determination becomes a fact, a clock starts, and a filing is proven.
+  </Card>
+  <Card title="Retention and erasure" icon="eraser" href="/compliance/retention-and-erasure">
+    How long an artifact lives, and what happens on an erasure request.
+  </Card>
+</CardGroup>

@@ -1,0 +1,90 @@
+---
+title: "Parties"
+description: "Users and organisations — the work and the signals, not a customer list"
+icon: "users"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/ops-parties.webp"
+  alt="Ops · Parties — party-subject events grouped by lifecycle stage"
+  noZoom
+/>
+
+The user-management half of the Operations remit. [Deposits](/operations/subjects/deposits) is its
+money-movement sibling.
+
+<Warning>
+  **This screen cannot list a party and cannot edit one.** It lists the **work** and the **signals**
+  about parties — and it says so in a banner **above the first row**, not in a footnote.
+
+  The design states the reason for putting it there outright: **this is exactly where the
+  company-agnostic rule erodes.**
+</Warning>
+
+## What is on it
+
+Nine rows — every party-subject event in the sample set, grouped by **lifecycle stage**: user,
+organisation, virtual account, payout destination, payment method.
+
+Every reference, time, publisher, stream key, status and result reference is real sample data.
+
+| Column | Carries |
+| --- | --- |
+| **Signal path** | Five segments — where in the pipeline this event got to |
+| **Resulted in** | What the actions actually produced |
+
+**Four of the nine rows produced nothing.** That is a finding on the screen, not a gap in it.
+
+## The absence that matters most
+
+<Warning>
+  **The customer's name is deliberately not rendered — and the data is right there.**
+
+  The sample envelope carries `legalName`. The screen does not show it.
+
+  The stated reason: **rendering it would make this a customer list.**
+</Warning>
+
+That is the clearest illustration on the whole site of what "the core never learns the domain" means
+in practice. It is not that the name is unavailable. It is that displaying it would change what this
+product *is*.
+
+Also absent, each with its reason on the canvas:
+
+- **Every person's name** — there is no directory sample data
+- **KYC review outcomes** — in the catalogue, with no arrival row
+- **Task state** — recorded for only two deposit tasks
+
+## The row the catalogue flags
+
+One selected row carries a finding worth understanding even if you never read the catalogue:
+
+<Note>
+  **One upstream message, two completely different failures.**
+
+  *"Failed to add VA for partner"* is sent for **both** a party-lookup miss **and** a creation that
+  threw an error.
+
+  Only one field in the payload tells them apart.
+</Note>
+
+Two different causes need two different fixes. A single message for both means whoever receives it
+has to guess — and in the starting condition, they did.
+
+## No primary button
+
+<Note>
+  A party is created in the source system. A task about a party is created by a workflow.
+
+  **Neither happens here**, so there is no button that suggests they could.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Virtual accounts" icon="building-columns" href="/operations/subjects/virtual-accounts">
+    The provisioning half — where the same duplicated message turns up again.
+  </Card>
+  <Card title="Why there is no party table" icon="ban" href="/operations/subjects">
+    The rule all four subject screens obey.
+  </Card>
+</CardGroup>

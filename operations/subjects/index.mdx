@@ -1,0 +1,133 @@
+---
+title: "Your subject areas"
+description: "Four screens for the things Operations looks after — and the one rule they all obey"
+icon: "layer-group"
+mode: "wide"
+---
+
+Operations covers **money movement** and **users**. Four screens carry those:
+
+<CardGroup cols={2}>
+  <Card title="Deposits" icon="money-bill-transfer" href="/operations/subjects/deposits">
+    Money arriving, and what could not be attributed.
+  </Card>
+  <Card title="Parties" icon="users" href="/operations/subjects/parties">
+    Users, organisations, and their instruments.
+  </Card>
+  <Card title="Virtual accounts" icon="building-columns" href="/operations/subjects/virtual-accounts">
+    Provisioning — requested, failed, closed.
+  </Card>
+  <Card title="Instructions" icon="right-left">
+    Transfers, payments and trades — see below.
+  </Card>
+</CardGroup>
+
+## The rule all four obey
+
+<Warning>
+  **None of these screens lists the thing it is named after. None of them can edit one.**
+
+  There is no deposit table, no party table, no virtual-account table and no transaction table in this
+  platform — and there never will be. A subject is an **opaque reference**: the platform knows
+  `DEP-77412` is a deposit reference and knows nothing else about it.
+
+  So each screen shows **the work and the signals about** its subject, and **says so in a line under
+  its own title.**
+</Warning>
+
+That sentence on each screen is not a caveat. It is load-bearing, and the design says why:
+
+> *"a table of `VA-` refs will be read as a VA list within a week"*
+
+<Note>
+  **This is where the company-agnostic rule erodes, and it erodes here specifically.** A screen listing
+  refs looks exactly like a screen listing records. The banner, the absence of a create button, and the
+  absence of a link into the source system are three separate defences against the same mistake.
+</Note>
+
+## What follows from that
+
+| You will not find | Because |
+| --- | --- |
+| A **create** button | A deposit, a party and a virtual account are created in the source system. Never here |
+| A **row action** or checkbox | Both would promise an operation on a handle this product cannot act on |
+| A **deep link** into the source system | No address for it exists anywhere in this design |
+| The customer's **name** | The fixture carries `legalName` and it is **deliberately not rendered** — showing it would make this a customer list |
+| An **amount** where the publisher did not send one | An absence is rendered as an absence, with its reason |
+
+## Two kinds of row, never merged
+
+Three of the four screens show both, in **separate cards**:
+
+<CardGroup cols={2}>
+  <Card title="Arrived" icon="inbox">
+    Events that actually reached the platform. Real refs, real times, real outcomes.
+  </Card>
+  <Card title="Capability" icon="list-check">
+    What the source service **could** publish — the catalogue — with a **readiness tier** instead of a
+    timestamp.
+  </Card>
+</CardGroup>
+
+<Warning>
+  **The two are never merged into one table.** A catalogue row describes a *possibility*; an arrived
+  row describes an *occurrence*. Putting them in one list would make an unpublished event look like a
+  quiet one.
+
+  Readiness gets **no colour at all** — it is not a status.
+</Warning>
+
+## Reading an absence
+
+Every one of these screens renders missing data as `—` **with the reason**, never as `0`.
+
+<Note>
+  **A zero is a measurement.** *"Zero tasks were created"* is a finding. *"There is no task data"* is
+  an absence. They look identical on a dashboard and mean opposite things, so the design refuses to
+  collapse them.
+</Note>
+
+## Instructions — the one with no page of its own here
+
+<img
+  src="/images/screens/ops-instructions.webp"
+  alt="Ops · Instructions — the work and signals around transfers, payments and trades"
+  noZoom
+/>
+
+Transfers, payments and trades. It follows the same rule as the other three, and its **work half is
+three absences** — because nothing in the current configuration reacts to a treasury instruction at
+all: no event type, no subject type, and none of the workflows names one.
+
+Two facts on this screen matter beyond Operations, and both are carried forward to compliance:
+
+<AccordionGroup>
+  <Accordion title="A four-eyes control that approved itself" icon="triangle-exclamation">
+    One payment path records **the creator and the approver as the same automated actor**.
+
+    It is gated only by a feature flag, and it is **silent today** — nothing announces when it fires.
+
+    This is a maker-checker control that passes itself, and it is the single most consequential thing
+    on any of the four screens.
+  </Accordion>
+  <Accordion title="A funding destination can vanish with no durable record" icon="ghost">
+    Account deletion is **readiness tier C**: nothing is written, and the identifier ceases to exist.
+
+    So a destination money could be sent to can disappear and leave nothing behind to audit. The
+    platform cannot ingest what was never said — this needs a change in the source service first.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Neither of these is drawn with a green tick anywhere. The second carries a **warn** mark and an
+  explainer, because a missing fact is not a passing check.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Attention" icon="triangle-exclamation" href="/operations/attention">
+    Where anything on these four screens that needs a person actually surfaces.
+  </Card>
+  <Card title="Honest limits" icon="scale-balanced" href="/compliance/limitations">
+    Where the two findings above are carried for compliance.
+  </Card>
+</CardGroup>

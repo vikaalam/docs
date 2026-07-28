@@ -1,0 +1,157 @@
+---
+title: "The core idea"
+description: "Three layers that are usually collapsed into one, and the test that separates them"
+icon: "lightbulb"
+---
+
+Reactions, processes, and work items have **different lifetimes, different state requirements, and
+different failure modes**. Putting them in one component produces a stream consumer with a state
+machine inside it — and a system that cannot answer *"where is this case stuck?"*
+
+This is the central structural decision, and the one most easily got wrong.
+
+## The three layers
+
+| Layer | Module | State | Lifetime of one unit | Failure means |
+| --- | --- | --- | --- | --- |
+| **Reflex** | `automation` | Stateless. Each event is independent | seconds | The action retries or dies. Nothing is "in progress" |
+| **Deliberation** | `process` | Stateful, versioned, resumable | hours to days | The instance waits. It must survive restarts and be visible |
+| **Work** | `task` | Stateful, owned by a person | minutes to days | An SLA is breached and someone must be told |
+
+## The test that decides where something belongs
+
+<Steps>
+  <Step title="Can it complete without waiting for anything or anyone?">
+    → **`automation`**. A reflex. Stateless, and each event is independent of every other.
+  </Step>
+  <Step title="Does it need to remember where it is between two things that may be days apart?">
+    → **`process`**. Stateful, versioned, resumable. It survives restarts and is visible while waiting.
+  </Step>
+  <Step title="Does a human have to do it?">
+    → **`task`**. Owned by a person, with a deadline, a form, and a history.
+  </Step>
+</Steps>
+
+<Tip>
+  Apply the test in order and stop at the first yes. Most requirements land on `automation`, which is
+  the point — the expensive layers are used only where they earn their cost.
+</Tip>
+
+## Concretely — customer onboarding
+
+```
+customer.account.created   ─ reflex ─▶   start the "customer onboarding" process
+                                         │
+                            deliberation │  step 1  automatic  identity.verify      (integration)
+                                         │  step 2  automatic  screening.sanctions  (integration)
+                                         │  step 3  human      compliance review    (task)
+                                         │  step 4  human      operations approval  (task)
+                                         │  step 5  automatic  generate + submit report (reporting)
+                                         ▼
+                            work         each human step is one task with an assignee, an SLA,
+                                         a form, attachments, and a full state history
+```
+
+**`automation` alone cannot do this** — it would have to remember that step 2 finished while step 3
+is waiting for a person who is on leave.
+
+**`process` alone cannot do it either** — a person needs a queue, a due date, a comment thread, and a
+place to attach a document, and that is a domain of its own.
+
+## The eight things a reaction can do
+
+When an event matches a workflow, the workflow runs an **ordered list of actions**. There are exactly
+eight kinds, and the list is deliberately closed.
+
+<CardGroup cols={4}>
+  <Card title="notify" icon="bell">Tell the right people on the right channel</Card>
+  <Card title="create_task" icon="list-check">Mint a unit of human work with an owner and an SLA</Card>
+  <Card title="start_process" icon="diagram-project">Open a multi-step case</Card>
+  <Card title="signal_process" icon="signal">Advance a case that is waiting</Card>
+  <Card title="call" icon="plug">Call a vendor through a logical capability</Card>
+  <Card title="project" icon="table">Feed a projection in `directory` or `reporting`</Card>
+  <Card title="record" icon="box-archive">Write a typed, retained projection of the fact</Card>
+  <Card title="emit" icon="arrows-turn-right">Publish a derived event back into the pipeline</Card>
+</CardGroup>
+
+<Note>
+  A condition language that grows into a programming language is **a deploy in disguise, without any
+  of a deploy's review**. Matching conditions are declarative and intentionally limited, and this
+  action list is closed for the same reason.
+</Note>
+
+## All matching workflows run
+
+A single event may match several workflows, and **every match executes**. Concerns attach to an event
+independently — a compliance record, an operations notification, and a task can each be configured by
+a different team without any of them knowing the others exist.
+
+```
+transaction.settled
+  ├─ workflow "settlement-audit"      priority 10  → record
+  ├─ workflow "large-settlement"      priority 20  → notify   (condition: amount > threshold)
+  └─ workflow "manual-review-needed"  priority 30  → create_task + notify
+                                                     (condition: counterparty flagged)
+```
+
+- **Priority orders execution — it does not select.** Lower number runs first, so ordering is
+  deterministic and reproducible on replay.
+- **`exclusive: true`** stops evaluation of every lower-priority workflow. That is the suppression
+  and override mechanism: a maintenance-window workflow at priority 1 with `exclusive` and no actions
+  silences everything below it.
+- Each matched workflow produces **its own** execution rows. One workflow failing never affects
+  another.
+
+<Warning>
+  **First-match-wins was rejected.** It makes two teams' independent configurations silently compete,
+  and the losing one fails by *doing nothing* — the hardest failure to notice.
+</Warning>
+
+## Not every event produces work
+
+Most events do not create a task, and many create nothing at all. The system has to express that
+range without forcing every event through the same shape.
+
+| Intent | Configuration | Resulting status |
+| --- | --- | --- |
+| Keep the fact, do nothing | A workflow with an empty action list | `observed` |
+| Notify someone | one `notify` action | `dispatched` |
+| Run an automated reaction | `call` / `record` / `emit` | `dispatched` |
+| Create human work | `create_task` | `dispatched` |
+| Create work **and** tell a wider audience | `create_task` + `notify` | `dispatched` |
+| Open a multi-step case | `start_process` | `dispatched` |
+| Deliberately drop noise | An exclusive workflow with an empty action list | `suppressed` |
+| **Nobody has configured this yet** | — | `unmapped` |
+
+<Note>
+  **The distinction that matters: an event that produced no action must say whether that was a
+  decision or an omission.**
+
+  `observed` — someone decided this event is worth keeping and worth nothing else. Not a work queue.
+
+  `unmapped` — nobody has looked at it yet. **A work queue**, with "build a workflow from this event"
+  attached.
+
+  Collapsing the two is what makes the `unmapped` queue permanently non-empty, and a queue that is
+  never empty is a queue nobody reads.
+</Note>
+
+## Configuration is the product surface
+
+Workflows, responsibility rules, task types, channel policy, report definitions, process definitions,
+event types — all of it is **data, edited in the interface, versioned in the database**. A new
+reaction needs no deploy.
+
+The cost is stated plainly rather than discovered: **configuration is not in git.** Two mitigations
+are mandatory before production — a configuration export that produces a diffable file, and the audit
+trail that records every change with a before/after diff.
+
+<Warning>
+  An operator who can edit a workflow can change who is notified about a compliance failure. That is
+  exactly as sensitive as a code deploy, and must be reviewable in the same way.
+</Warning>
+
+<Card title="Next: an event's journey" icon="route" href="/overview/event-journey">
+  One event, all the way through — publish, ingress, guards, match, actions, work, and the return
+  loop.
+</Card>

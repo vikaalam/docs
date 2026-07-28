@@ -1,0 +1,115 @@
+---
+title: "Virtual accounts"
+description: "Provisioning — and the money-adjacent request that nothing reacted to"
+icon: "building-columns"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/ops-virtual-accounts.webp"
+  alt="Ops · Virtual accounts — the arrived card and the capability card, never merged"
+  noZoom
+/>
+
+The provisioning half of the Operations remit, and the one screen that holds **both** kinds of row.
+
+<Warning>
+  **It cannot list a virtual account and cannot provision one.** Virtual accounts are created,
+  approved, retried and closed in the source system.
+
+  The banner says so **above the first row**, for a reason the design states plainly: *a table of
+  `VA-` references will be read as a VA list within a week.*
+
+  No create button. No row action. No deep link — **there is no address for the source system anywhere
+  in this design.**
+</Warning>
+
+## Two cards, never merged
+
+<Tabs>
+  <Tab title="Arrived">
+    Events that actually reached the platform. **Two of twenty-six rows.**
+
+    | Ref | What happened |
+    | --- | --- |
+    | `VA-1180` | Provisioning **failed**, and the reaction is `dead` — a vendor call exhausted 6 attempts on `502`, and its notification exhausted 5 on connection refused |
+    | `VA-1182` | Provisioning **requested** — and `unmapped` |
+
+    **Zero tasks, zero case signals, zero deliveries** across both. *That* is the finding.
+  </Tab>
+  <Tab title="Capability">
+    What the source service **could** publish — five catalogue entries, with **readiness** columns
+    instead of arrival columns.
+
+    Occurred-at and event-id render **readiness words, never values**, because the catalogue names
+    source columns and not timestamps.
+
+    **Two of the five are registered. The other three answer `404` at the door** — which is
+    deliberately *not* the same thing as `unmapped`.
+  </Tab>
+</Tabs>
+
+<Note>
+  **Merging the two cards would make an unpublished event look like a quiet one.** A catalogue row is a
+  possibility; an arrived row is an occurrence.
+</Note>
+
+## The screen's most operational fact
+
+<Warning>
+  **`VA-1182` — provisioning was requested, and nothing reacted.**
+
+  The event arrived cleanly. It is registered. There is simply no workflow for it yet, so its status
+  is `unmapped`.
+
+  **Money-adjacent provisioning was requested and nothing happened.**
+</Warning>
+
+This is also a clean illustration of a boundary the platform draws deliberately:
+
+| | |
+| --- | --- |
+| **The consequence** | Operational — it is your provisioning request that stalled |
+| **The fix** | Engineering's — somebody has to build the workflow |
+
+So it appears on **your** Attention screen as a fact, and is listed on the engineering side as the
+row that needs a configuration change. Neither team can quietly assume the other saw it.
+
+## `404` and `unmapped` are different answers
+
+| Answer | Means | Who fixes it |
+| --- | --- | --- |
+| `404` | The event type **is not registered**. The door does not exist | A configurator registers it |
+| `unmapped` | It **is** registered and arrived, and no workflow matches | A configurator builds the workflow |
+
+Three of the five catalogue entries here are the first case. `VA-1182` is the second.
+
+## Two catalogue contradictions, printed rather than resolved
+
+<Warning>
+  **The same pair of failures is filed under two different event-type names** in two places in the
+  catalogue.
+
+  The registry holds one of them. The other is **named in a callout and deliberately not rendered as a
+  row** — because drawing it would merge the two corpora, which is exactly what the two-card split
+  exists to prevent.
+</Warning>
+
+And the duplicated upstream message from [Parties](/operations/subjects/parties) turns up again here:
+one message, *"Failed to add VA for partner"*, for two genuinely different failures.
+
+## Deliberately absent
+
+- **Every person's name** — no directory sample data
+- **The party behind either VA**, beyond its opaque reference
+- **Every VA attribute no publisher sent**
+- **Whether either account now exists** — the platform does not know, and does not pretend to
+
+<CardGroup cols={2}>
+  <Card title="Attention" icon="triangle-exclamation" href="/operations/attention">
+    Where `VA-1182` surfaces, and how the ops/engineering boundary is drawn on it.
+  </Card>
+  <Card title="When nothing happens" icon="ghost" href="/operations/scenarios/nothing-happened">
+    Five ways an event produces nothing, and how each becomes visible.
+  </Card>
+</CardGroup>

@@ -1,0 +1,155 @@
+---
+title: "Retention and erasure"
+description: "How long everything is kept, and how erasure works without destroying the record"
+icon: "eraser"
+mode: "wide"
+---
+
+## The conflict, and the resolution
+
+An append-only audit record and a right-to-erasure obligation cannot both be satisfied by deletion.
+
+- Deleting audit rows destroys the guarantee that gives the record its value.
+- Refusing erasure refuses a legal obligation.
+
+<Note>
+  **The resolution is crypto-shredding.** Personal data in long-retention stores is encrypted with a
+  **per-subject key**. Erasure destroys the **key**, not the row.
+
+  The record survives, stays countable, and remains part of the history. The personal data inside it
+  becomes unreadable, permanently, and the destruction is recorded so the erasure can be **proven** —
+  which is the half of the obligation that a deletion cannot satisfy.
+</Note>
+
+<img
+  src="/images/screens/erasure.webp"
+  alt="Erasure — requests, their state, and the refusals"
+  noZoom
+/>
+
+<Warning>
+  **This must be in place before the first personal data is written.**
+
+  Retrofitting means re-encrypting an append-only history. It is the one item in the entire design
+  that cannot be retrofitted, and it is carried as a delivery risk for exactly that reason.
+</Warning>
+
+## What happens on an erasure request
+
+<Steps>
+  <Step title="A legal hold is checked first">
+    If one is in force for that scope, the request is **rejected** — and the rejection is itself
+    audited, with its reason.
+  </Step>
+  <Step title="If no hold applies, the key is destroyed">
+    One update, on one row. Not *N* operations across *N* modules that could partially fail — a
+    partial erasure is not an erasure.
+  </Step>
+  <Step title="The destruction is recorded">
+    So the erasure is provable. A key registry that holds a version and a destruction state is what
+    makes "we erased this" a record rather than a claim.
+  </Step>
+  <Step title="Everything else stays">
+    Row counts, timelines, and the fact that events occurred all remain intact. Only the readable
+    personal content is gone.
+  </Step>
+</Steps>
+
+## What is kept, and for how long
+
+| Store | Mechanism | Retention | Personal data |
+| --- | --- | --- | --- |
+| **Ingest history** — every event received | Partition drop | **Months** — and it is the backfill horizon for any report type declared later | Yes, unredacted envelope → crypto-shredded |
+| **Records** — typed, curated projections | Per record type | **Years where declared** | Typed projection, redactable |
+| **Audit entries** | Partition drop, separate credential | **Years.** Legal hold overrides | Yes → crypto-shredded |
+| **Report facts** | Append-only, never deleted | Per report obligation | Yes → crypto-shredded |
+| **Report submissions** | — | **Years** — the stored receipt is the evidence | Receipt only |
+| **Deliveries** — notification log | Partition drop | **18 months**, deliberately shorter than audit | Yes → crypto-shredded |
+| **Vendor invocations** | Partition drop | **Short**, deliberately shorter than audit | Yes → crypto-shredded |
+| **Artifacts** — generated reports, attachments | Retain-until date, **hold wins** | Per policy, up to years | Yes → crypto-shredded |
+| **Subject keys** | Never deleted | The row outlives the data it protected; only the key material is destroyed | The key itself |
+
+<Note>
+  **Notification and vendor-call logs are deliberately shorter than the audit record.** They contain
+  the most personal data and the least evidentiary value — a delivery log is operational, an audit
+  entry is evidence.
+</Note>
+
+## The trap: "just log it" is not a retention strategy
+
+This is the most consequential thing on this page for a compliance reader.
+
+<Warning>
+  **The ingest history is dropped on a months-long schedule.** That is correct for an operational
+  history and **silently wrong for a record-keeping obligation measured in years**.
+
+  The partition drops on time. The "kept fact" is gone. **Nothing failed.** Nothing alerts. The
+  configuration was legal when it was written.
+</Warning>
+
+The rule, enforced at configuration time rather than discovered at an audit:
+
+| Obligation | Required configuration |
+| --- | --- |
+| Shorter than the ingest window | Keeping the fact is sufficient |
+| **Longer** | A **typed record** is required, with its own retention. Keeping the raw event is **refused** |
+
+<Note>
+  **The refusal is checked continuously, not only when you press save.**
+
+  Checking only on save was the original defect: the configuration is legal at the moment it is
+  written and becomes illegal later, **without anyone editing it** — deactivate a workflow, deactivate
+  a record type, or shorten a retention, and the obligation is silently unbacked.
+
+  Nothing in that sequence touches the object whose save would have been refused. So the invariant is
+  evaluated continuously, and a violation becomes a **queue item** rather than an exception — the
+  obligation is already unbacked by the time anyone could be told, so failing the *next unrelated
+  edit* would help nobody.
+</Note>
+
+Two further consequences, both deliberate:
+
+- A typed record is a **chosen-field, redactable** projection, whereas the raw envelope may contain
+  data that never passed a redaction policy.
+- Retention is **per record type**, so different obligations do not have to share one number.
+
+## Legal holds override everything
+
+| Interaction | Result |
+| --- | --- |
+| Hold vs. erasure request | Erasure **refused**, refusal audited |
+| Hold vs. artifact retention date | **Hold wins**; the artifact is not expired |
+| Hold vs. audit partition drop | **Hold wins** |
+| Hold released | Normal retention resumes from that point |
+
+<Warning>
+  **One defect found and left visible rather than designed around:** the erasure interlock currently
+  looks up holds **by subject**, but a hold scoped by *correlation id* — the natural scope for a
+  case-level hold — names no subject.
+
+  The one hold in the worked example would not be found by that query. It is recorded as a defect to
+  close.
+</Warning>
+
+## Where a number was never stated
+
+Recorded as an open question rather than filled in with a plausible default.
+
+| Undecided | Why it must be a compliance answer |
+| --- | --- |
+| Artifact retention duration | A regulatory answer, not an engineering one |
+| Ingest-history retention | It is not only a storage number — it is the **backfill horizon** for every report type declared later. Shortening it shortens what can ever be reconstructed |
+| Field-level redaction for identity-verification responses | Vendor responses contain identity documents. The policy and its retention must be agreed **before** that module ships |
+
+<Note>
+  A default retention that nobody chose is worse than a blank, because it looks decided.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Integrity and holds" icon="fingerprint" href="/compliance/integrity-and-holds">
+    Tamper-evidence, and how holds interact with erasure.
+  </Card>
+  <Card title="Honest limits" icon="triangle-exclamation" href="/compliance/limitations">
+    Everything this platform does not prove.
+  </Card>
+</CardGroup>

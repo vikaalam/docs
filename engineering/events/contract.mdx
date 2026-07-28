@@ -1,0 +1,112 @@
+---
+title: "The event contract"
+description: "The central contract — and why each rule is worth the friction it causes a publisher"
+icon: "file-contract"
+mode: "wide"
+---
+
+The event contract is the most-argued-with part of this design, so this page states the **failure
+each rule prevents**, not just the rule.
+
+Every one of these was objected to during the estate audit, and every objection is answered by
+something that estate actually does.
+
+## Five rules, and the failure each one prevents
+
+| Rule | Objection heard | What happens without it |
+| --- | --- | --- |
+| **`eventId` required** | "The resource id is enough" | A resource id identifies the *thing*, not the *occurrence*. Approve → reject → approve on one record produces three events with one id. In the audited estate **0 of 139** sends carried an occurrence id, so no consumer could tell a redelivery from a real second event |
+| **`occurredAt` required** | "The receiver can stamp arrival time" | Arrival time is the time the pipeline was healthy, not the time the thing happened. Under backlog the two diverge by exactly the interval where ordering matters. Several audited sends computed the real timestamp one line above and dropped it — **the field was free and still absent** |
+| **`subject` structured** as `{type, ref}` | "Put the id in `data`" | Routing, the cycle guard and the audit trail all key on the subject. Buried in a free-form blob it cannot be indexed, and the cycle guard silently degrades to type-only — the exact failure it was redesigned to avoid |
+| **`data` carries facts, not references** | "Send the id, we'll look it up" | The lookup requires the consumer to hold the **producer's database credential** and re-read a row that may have changed. Two independent codebases in the audit converged on `{type, id}` and both created exactly this |
+| **`actor` present when a human acted** | "The reviewer is in our database" | So they are — and the notification says only that a review happened. **Every audited rejection notice omitted both the rejecting reviewer and the reason**, though both were persisted one line earlier |
+
+## One discriminator per destination is not optional
+
+<Warning>
+  In the audited estate, a single outbound URL received **four distinct events** with **no type field
+  and no resource id**. The receiver routed by sniffing key names inside a JSON string **nested inside
+  the JSON body**.
+
+  `eventType` exists so that a destination never has to guess what it just received.
+</Warning>
+
+## A near-miss worth recording
+
+One helper derived a "unique" key as `uuidv5(id)` **without including the record type** — so record
+`5` of one kind and record `5` of another produced the *same* key.
+
+Any consumer deduplicating on it would have silently dropped real events.
+
+<Note>
+  **A derived idempotency key must incorporate every field that distinguishes the occurrence.** This
+  is why the action-execution key is derived from the event *and* the action, never from a bare
+  resource id.
+</Note>
+
+## What an idempotency header buys, and what it does not
+
+Sending `Idempotency-Key` outbound is correct and costs nothing. **Relying on it is an assumption
+dressed as a contract.**
+
+<Warning>
+  We cannot impose an obligation on a third-party regulator gateway or vendor endpoint. The far side
+  honours the header, ignores it, or implements it differently — **and we find out during an
+  incident.**
+
+  Where an effect must be at-most-once, it is made so on **our** side of the wire: mark-before-call in
+  its own transaction, then reconciliation by status query rather than blind resend.
+</Warning>
+
+## Configuration defects are not delivery failures
+
+`depth_exceeded` and `cycle_detected` are surfaced differently in the interface from a failed
+delivery, and deliberately so.
+
+<Note>
+  **Two workflows baiting each other will fill Redis and the ingest history long before anyone reads a
+  log line.** A configuration defect needs a configurator, not an on-call engineer.
+</Note>
+
+## The four pages of this contract
+
+<CardGroup cols={2}>
+  <Card title="The envelope" icon="envelope" href="/engineering/events/envelope">
+    Every field, the naming rule, and the seven fields that are rejected.
+  </Card>
+  <Card title="Two doors, one pipeline" icon="door-open" href="/engineering/events/ingress">
+    The stream wire shape, the HTTP endpoint, and why the endpoint exists because a row exists.
+  </Card>
+  <Card title="Idempotency and loop guards" icon="fingerprint" href="/engineering/events/idempotency">
+    Why the constraint cannot live where you would put it, and why the cycle guard needs the subject.
+  </Card>
+  <Card title="Matching and actions" icon="filter" href="/engineering/events/matching-and-actions">
+    All matching workflows run; priority orders, exclusive overrides; the eight action types.
+  </Card>
+</CardGroup>
+
+## And the stores it writes to
+
+<Card title="Event lifecycle and the four stores" icon="database" href="/engineering/events/lifecycle">
+  Eleven statuses, the precedence rule when dispositions mix, and the four stores that are all called
+  "the log".
+</Card>
+
+## The contract is machine-readable
+
+The envelope is published as a JSON Schema, generated from this specification.
+
+<Note>
+  **The seven forbidden fields are declared with `not: {}`**, so a validator names the offender rather
+  than failing with a generic "additional properties" error. A rejection that does not say what was
+  wrong gets worked around rather than fixed.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="The envelope schema" icon="envelope" href="/api/event-envelope">
+    Every field documented, plus the three things the schema **cannot** check and a reviewer must.
+  </Card>
+  <Card title="Download it" icon="download" href="/contracts/event-envelope.schema.json">
+    `event-envelope.schema.json` — JSON Schema draft 2020-12.
+  </Card>
+</CardGroup>

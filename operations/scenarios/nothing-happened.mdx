@@ -1,0 +1,174 @@
+---
+title: "When nothing happens"
+description: "The most important scenario — an event arrives and nobody is told"
+icon: "ghost"
+mode: "wide"
+---
+
+Every other scenario is about work getting done. This one is about **work not getting created**, and
+it is the scenario the whole design is built around.
+
+<Warning>
+  In the audited estate, a missing routing key sent a message to `channel: undefined`. The chat API
+  answered `ok:false` **inside an HTTP 200**. The error was swallowed. **The message disappeared with
+  no trace and no counter.**
+
+  Nobody was told. Nobody knew nobody was told.
+</Warning>
+
+## Five ways "nothing happened" — and how each one is visible
+
+<Tabs>
+  <Tab title="Nobody configured it">
+    **Status: `unmapped`**
+
+    The event type is registered and the event arrived cleanly. There is simply no workflow for it
+    yet.
+
+    <img
+      src="/images/screens/events.webp"
+      alt="Events — the ingest history, including events that produced nothing"
+      noZoom
+    />
+
+    - **Where you see it:** Attention, and the Events screen
+    - **Who fixes it:** a configurator
+    - **The row carries:** a *build a workflow from this event* action — because a workflow should
+      only ever be built from a shape that actually arrived
+
+    <Note>
+      **This queue is designed to be able to reach zero.** That is why `unmapped` is a separate status
+      from `observed`: if "we decided nothing should happen" and "nobody has looked yet" shared one
+      status, the queue would never empty, and a queue that never empties is a queue nobody reads.
+    </Note>
+  </Tab>
+
+  <Tab title="Somebody decided nothing should happen">
+    **Status: `observed`**
+
+    Not a failure. Not a queue. Somebody looked at this event type and decided it is worth keeping and
+    worth nothing else.
+
+    The envelope is stored and queryable, and it feeds reporting. It just does not create work.
+
+    <Warning>
+      **`observe` alone is not a retention strategy.**
+
+      The ingest history is dropped on a months-long schedule. That is correct for an operational
+      history and **silently wrong for a record-keeping obligation measured in years** — the partition
+      drops on time, the "kept fact" is gone, and nothing failed.
+
+      So if an event type declares a retention obligation **longer** than the ingest window, an
+      `observe`-only configuration is **refused**, and the interface names the reason. It needs a
+      `record` action with its own retention instead.
+
+      This is checked **continuously**, not only when you press save — because the configuration can
+      be legal when written and become illegal later, without anyone editing it.
+    </Warning>
+  </Tab>
+
+  <Tab title="It was deliberately silenced">
+    **Status: `suppressed`**
+
+    An exclusive workflow — a maintenance window, or a known-noisy source — stopped everything below
+    it from running.
+
+    - **Where you see it:** on the event, in grey. Suppressed is **recorded**, never invisible
+    - **Why grey and not amber:** it worked exactly as configured
+
+    <Note>
+      **Suppress does not silence everything.** It only short-circuits workflows *below* it in
+      priority order. So "suppress the pager but keep the record" is expressible: put the recording
+      workflow at a **lower priority number** than the suppressor.
+    </Note>
+  </Tab>
+
+  <Tab title="A notification reached nobody">
+    **Status: the event is `partial`, the delivery is `no_recipient`**
+
+    This is the most common one, and the most consequential.
+
+    <img
+      src="/images/screens/deliveries.webp"
+      alt="Deliveries — a no_recipient row, amber"
+      noZoom
+    />
+
+    The notification ran. It applied the channel policy. It asked *who is responsible for this?* and
+    the answer was **nobody**.
+
+    - **Where you see it:** Attention, and the Deliveries log
+    - **Who fixes it:** whoever owns the responsibility rules for that domain
+    - **The row names the rule that was evaluated**, so you fix the right one
+
+    <Warning>
+      **The event goes `partial`, never green.** Before this rule, the ingest history showed
+      `dispatched` for an alert nobody received, and the finding lived only in the delivery log where
+      nobody looked. The two screens now agree by construction.
+    </Warning>
+  </Tab>
+
+  <Tab title="Something gave up">
+    **Status: `dead`**
+
+    An action — a vendor call, a filing submission, a notification — was retried with backoff and
+    never succeeded.
+
+    - **Where you see it:** Attention
+    - **Who fixes it:** an engineer or an admin. This is an outage or a broken destination, not a
+      configuration gap
+
+    <Note>
+      Both `no_recipient` and `dead` make their event `partial`, so they land in the same queue. The
+      interface distinguishes them by the **action's** own status, because they need completely
+      different fixes.
+    </Note>
+  </Tab>
+</Tabs>
+
+## The one case that is genuinely not visible here
+
+Being honest about this is more useful than claiming complete coverage.
+
+<Warning>
+  **The platform cannot ingest what was never said.**
+
+  Some occurrences in the source systems never become facts at all:
+
+  - A **reportable regulatory group over the statutory threshold** whose currency matches neither
+    configured list, dropped by a two-branch condition with **no else, no log, and no counter**
+  - A **provider callback rejected for a bad signature** *before* anything is written — so not even
+    the rejection has an id
+  - A **balance check that only runs as a side effect** of another call succeeding
+
+  These need a change in the **source service** first. **32 such occurrences are itemised**, each
+  with the specific change its service needs.
+</Warning>
+
+That is a real limitation, and it is the reason integrating a publishing service is a documented
+piece of work rather than a checkbox.
+
+## How to tell the five apart at a glance
+
+| You see | It means | Act? | Who |
+| --- | --- | --- | --- |
+| Amber `unmapped` | Nobody configured a reaction | Yes | Configurator |
+| Grey `observed` | Somebody decided nothing should happen | No | — |
+| Grey `suppressed` | Deliberately silenced | No | — |
+| Amber `no_recipient` | The rules resolved to nobody | **Yes** | Whoever owns the responsibility rules |
+| Red `dead` | Retries exhausted | **Yes** | Engineer or admin |
+
+<Note>
+  **Grey means "on purpose". Amber means "it worked and reached nobody". Red means "it broke".**
+
+  Learn those three and you can read every status screen in the product.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Attention" icon="triangle-exclamation" href="/operations/attention">
+    Where all five of these surface for someone to act on.
+  </Card>
+  <Card title="Publishing hazards" icon="triangle-exclamation" href="/engineering/publishing/hazards">
+    The engineering side: the 32 facts that were never stated, and what each service needs to change.
+  </Card>
+</CardGroup>

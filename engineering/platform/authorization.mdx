@@ -1,0 +1,119 @@
+---
+title: "Authorization — the decision"
+description: "Why the policy is authored elsewhere, and the three alternatives that were rejected"
+icon: "gavel"
+mode: "wide"
+---
+
+<Note>
+  **This page carries the *decision*. The mechanics live in [Reference](/reference/authorization).**
+
+  Two guards, three dimensions, the global resources and the list-endpoint rule are all stated there,
+  once. This page is about why the policy that those guards enforce is **not authored in this
+  product**.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Authorization mechanics" icon="lock" href="/reference/authorization">
+    The two guards, the three dimensions, and the arm that must not be dropped.
+  </Card>
+  <Card title="Implementing it" icon="code" href="/reference/implementation">
+    The same model as working code.
+  </Card>
+</CardGroup>
+
+## The policy is not authored here
+
+<Warning>
+  **This platform is a Policy Decision and Enforcement Point. It is never a Policy Administration
+  Point.**
+
+  There is no role editor and no grant screen, and their absence is **correct**.
+</Warning>
+
+| Owned by the auth service | Owned here |
+| --- | --- |
+| Resource and action vocabulary; which role holds which permission; which person holds which role | Both guards, evaluated in-process |
+| The policy rows loaded into the local policy store | **Scope evaluation** — the labels are derived from the work's own columns, which no external service can read |
+| Grant audit, access review, expiry | The **route-prefix module guard**, which is a property of this platform's routing, not a fact about a principal |
+
+### Why the policy moved out
+
+<Note>
+  The estate runs **seven distinct inbound auth mechanisms** and no permission is portable between
+  them. One human's authority is re-declared in every service, and a revocation is *N* manual edits
+  nobody can enumerate.
+
+  `workspace-ops` would have added an **eighth**.
+</Note>
+
+Three alternatives, and why each failed:
+
+| Rejected | Why |
+| --- | --- |
+| A central authorize-per-request call | Makes another service the availability and p99 floor of every request here — and **it cannot see the scope columns**, so the third dimension dies |
+| An auth module inside this platform | Same coupling, and it puts the operational platform in every other service's login path |
+| The identity provider's own authorization services | Same blind spot, and policy then lives in a vendor console where it cannot be screened or approval-gated |
+
+### The driver is not written here either
+
+Snapshot loading, the watcher subscription, and the enforcer come from the estate's shared client
+package. This platform's adapter binds it to the two guards and to the scope columns.
+
+<Note>
+  A hand-rolled copy would be a **sixth implementation** of a security control the estate has already
+  demonstrated it cannot keep consistent.
+</Note>
+
+## Two consequences, accepted deliberately
+
+<AccordionGroup>
+  <Accordion title="Revocation is eventually consistent" icon="clock">
+    Bounded to a few seconds at p99.
+
+    For the three global resources, that window is the residual risk — and the control for it is a
+    **short-lived token**, not a faster policy channel.
+  </Accordion>
+  <Accordion title="Boot behaviour is asymmetric on purpose" icon="power-off">
+    The platform **must still start** when the policy service is unreachable *after* boot, serving its
+    last known snapshot and alerting.
+
+    It must **refuse to start** when no snapshot is available *at* boot — because a process that
+    starts with no policy denies every request, which is **an outage wearing the costume of a bug**.
+  </Accordion>
+</AccordionGroup>
+
+## The frontend mirrors, it does not enforce
+
+<Warning>
+  **The server remains the only enforcement point. A hidden button is not a permission.**
+</Warning>
+
+Route guards mirror the two layers client-side **for navigation only**, and the bundle is split per
+module so an operator with `task` access never downloads the `integration` credential screens.
+
+The token lifecycle that follows from being a single-page application — PKCE, in-memory access token,
+cookie-borne refresh, the single-flight renewal guard — is stated once in
+[Reference → Authentication](/reference/authentication).
+
+## The struck row
+
+Authorization policy used to appear in the list of things that are configuration editable in the
+interface. It was struck — and the strike **closed a gap rather than opening one**.
+
+<Note>
+  Every other row in that list has a screen. This one never did: the navigation has no role or
+  permission editor and never had one.
+
+  A configuration row with no screen is normally a defect. Here it was **the architecture pointing at
+  a service that did not exist yet.** It exists now, and the absence of the screen is correct.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="The data model" icon="database" href="/engineering/platform/data-model">
+    Where the scope columns live and how they are derived.
+  </Card>
+  <Card title="Deployment" icon="server" href="/engineering/platform/deployment">
+    Process roles, ports, and what refuses to start.
+  </Card>
+</CardGroup>

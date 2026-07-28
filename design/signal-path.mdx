@@ -1,0 +1,131 @@
+---
+title: "The signal path"
+description: "The signature element — five segments, where the broken one is the action needed"
+icon: "chart-simple"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/event-detail.webp"
+  alt="Event detail — the signal path at full size, above the workflows that matched"
+  noZoom
+/>
+
+The product's signature element. **Five segments encoding what happened to an event** — micro-sized as
+a table's first column, large in a detail panel.
+
+<Note>
+  **The whole idea in one sentence: the broken segment maps directly to the action needed, and to
+  whose action it is.**
+</Note>
+
+## The five segments
+
+| Segment | Passes when | Failing means |
+| --- | --- | --- |
+| **receive** | The event was accepted at a door — an authenticated publisher on HTTP, or read from the stream | The publisher's key or domain scope. **Nothing is stored** |
+| **validate** | The envelope parsed, the subject type is declared on the event type, it is not a duplicate, depth is within limit, and there is no cycle in the causation chain | Either the publisher's payload **or our configuration** — and the two are **coloured differently** |
+| **match** | At least one active workflow matched | Nobody has configured this event yet |
+| **plan** | Execution and outbox rows were written **in the ingest transaction** | A deliberate no-action disposition, or nothing to plan |
+| **dispatch** | Every action of every matched workflow reached a terminal success | An action is dead — **a work queue** |
+
+## How each status renders
+
+```
+▓ filled (token colour)     ▒ half (neutral, deliberate stop)     ░ empty (border)
+
+▓▓▓▓▓   ok        dispatched      every action succeeded
+▓▓▓▓▓   ok        planned         all five, dispatch hollow-accent + pulse
+▓▓▓▓░   warn      partial         at least one action dead                    → work
+▓▓▓▓░   error     dead            every action dead                           → work
+▓▓▓▒▒   neutral   observed        matched, deliberately no plan               → not work
+▓▓▓▒▒   neutral   suppressed      exclusive workflow, deliberately no plan    → not work
+▓▓░░░   warn      unmapped        registered, nothing matched                 → work
+▓▓░░░   error     depth_exceeded  guard tripped at validate                   → config defect
+▓▓░░░   error     cycle_detected  guard tripped at validate                   → config defect
+▓░░░░   error     invalid         envelope rejected              → the publisher's work
+▓▒░░░   neutral   duplicate       already seen — expected under at-least-once
+```
+
+## Three rules that carry meaning, not style
+
+<Steps>
+  <Step title="observed and suppressed use half-blocks, not empty ones">
+    **An empty segment means *"did not get there"*. A half block means *"got there and deliberately
+    stopped"*.**
+
+    That is the `observed`-versus-`unmapped` distinction rendered — the single most important
+    distinction in the whole status vocabulary, made visible without reading a label.
+  </Step>
+  <Step title="validate fails in two different colours">
+    A rejected envelope is **the publisher's work**. A tripped depth or cycle guard is **our
+    configuration defect**.
+
+    Same segment, same position, different owner — so the colour has to differ, or the bar tells you
+    where it broke and not who fixes it.
+  </Step>
+  <Step title="A duplicate is neutral, not an error">
+    At-least-once delivery means duplicates are **expected traffic**. Colouring them red would make
+    the most common non-event in the system look like a problem.
+  </Step>
+</Steps>
+
+## What does not share the bar
+
+<Warning>
+  **A process instance and a task have their own lifetimes and do not use this bar.**
+
+  Forcing three lifecycles into one control was the alternative, and it produces a bar whose segments
+  **mean different things depending on the row** — which destroys the one property that makes it worth
+  having.
+</Warning>
+
+An **invocation** has no signal path either. That bar belongs to an ingested event; borrowing it would
+imply an ingest that never happened.
+
+## The redefinition, recorded so nobody re-derives it
+
+The previous version had six segments, designed when the pipeline ended in a notification. Two no
+longer exist.
+
+| Old | New | Why |
+| --- | --- | --- |
+| `receive` | `receive` | Same |
+| `identify` | *(removed)* | Publisher authentication folded into `receive`; recipient identity moved **inside** the `notify` action |
+| `map` | `validate` | Envelope validation and the loop guards, which run **before** matching |
+| `match` | `match` | Same |
+| `resolve` | `plan` | **Intent written, not effects performed** — the ingest transaction writes only intent |
+| `deliver` | `dispatch` | All actions of all matched workflows, not one delivery |
+
+<Note>
+  **The idea survives unchanged.** The segments were **remapped, not renamed**, and the mapping is
+  written down precisely so the next person does not reconstruct it from the old names and get it
+  subtly wrong.
+</Note>
+
+## Where it appears
+
+<CardGroup cols={2}>
+  <Card title="Micro — a table's first column" icon="table-columns">
+    On the events list. Five tiny segments, scannable down a column, so a page of events reads as a
+    shape rather than a set of words.
+  </Card>
+  <Card title="Large — a detail panel" icon="expand">
+    On event detail, above the workflows that matched. Segment labels visible, and the failing one
+    carries the reason.
+  </Card>
+</CardGroup>
+
+<Note>
+  A half-filled `dispatch` segment is **never empty** — half means *it got there and did not finish*,
+  which is exactly the `partial` case that this whole design exists to stop showing as green.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Event lifecycle" icon="database" href="/engineering/events/lifecycle">
+    The statuses this bar renders, and what each one means for a queue.
+  </Card>
+  <Card title="Six patterns" icon="shapes" href="/design/patterns">
+    Where the bar sits in each of them.
+  </Card>
+</CardGroup>

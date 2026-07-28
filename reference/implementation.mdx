@@ -1,0 +1,352 @@
+---
+title: "Implementing it"
+description: "A working @RequirePermission from a sibling estate, and the four places §11 deliberately differs"
+icon: "code"
+mode: "wide"
+---
+
+<Note>
+  **Provenance.** The Spring Boot code below is real and in production — a `@RequirePermission`
+  annotation and its aspect, taken from `integraci-camel`, a sibling estate, with cross-client
+  permission. **`workspace-ops` is NestJS**, so read this as *the model in another stack*, not as this
+  platform's source.
+
+  It earns its place here for a specific reason: it is a **working implementation of the alternative
+  ADR-32 considered and rejected**. Comparing against something real is worth more than comparing
+  against something invented.
+</Note>
+
+## The annotation
+
+```java
+package com.example.camel_project.annotation;
+
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface RequirePermission {
+
+    String resource();
+
+    String action();
+
+    boolean servicePermission() default false;
+
+    String message() default "Access denied";
+}
+```
+
+Two dimensions — **resource** and **action**. Hold that thought.
+
+## The aspect that enforces it
+
+```java
+@Aspect
+@Component
+@Slf4j
+@RequiredArgsConstructor
+public class AuthorizationAspect {
+
+    private final CoreExternalAPI coreExternalAPI;
+
+    /** Set app.security.require-permission.enabled=false to bypass @RequirePermission (temporary). */
+    @Value("${app.security.require-permission.enabled:true}")
+    private boolean requirePermissionEnabled;
+
+    @Around("@annotation(requirePermission)")
+    public Object checkPermission(ProceedingJoinPoint joinPoint, RequirePermission requirePermission)
+            throws Throwable {
+
+        if (!requirePermissionEnabled) {
+            log.debug("RequirePermission bypassed (app.security.require-permission.enabled=false)");
+            return joinPoint.proceed();
+        }
+
+        ReqPermissionDTO reqPermissionDTO = new ReqPermissionDTO();
+        reqPermissionDTO.setRole(SecurityUtil.getCurrentUser().getRoleName().toLowerCase());
+        reqPermissionDTO.setResource(requirePermission.resource());
+        reqPermissionDTO.setAction(requirePermission.action());
+
+        if (requirePermission.servicePermission()) {
+            reqPermissionDTO.setUserId(SecurityUtil.getCurrentUser().getUserId());
+        }
+
+        boolean checkPermission = coreExternalAPI.checkPermission(reqPermissionDTO);   // remote call
+
+        if (!checkPermission) {
+            throw new ForbiddenException(requirePermission.message());
+        }
+
+        return joinPoint.proceed();
+    }
+}
+```
+
+## A call site
+
+```java
+@RestController
+@RequestMapping("/api/job-titles")
+@RequiredArgsConstructor
+public class JobTitleController {
+
+    @GetMapping
+    @RequirePermission(resource = "job_title", action = "read")
+    public ResponseEntity<BaseResponse<List<CoreJobTitleDTO>>> list(…) { … }
+}
+```
+
+**At the scale it actually runs:** **338 call sites** across the service, over **41 distinct
+`resource:action` pairs** — `promote:read` alone appears 38 times, `deployment:read` 30, `pipeline:read` 25.
+
+## What it gets right
+
+<Note>
+  **The remote check fails closed.** A non-200 response returns `false`, and a body that will not
+  deserialise returns `false`. There is no branch where a transport failure grants access.
+
+  That is the single most important property of a remote permission check, and it is correct here.
+</Note>
+
+<Note>
+  **Calling another service for the decision is coherent *in that service*.** These controllers are
+  largely a proxy in front of a core backend — they are already calling it for the data. Asking it for
+  the permission adds no dependency that was not already on the request path.
+
+  **That is exactly why it is not coherent for `workspace-ops`**, which is not a proxy for anything.
+</Note>
+
+## Where §11 deliberately differs — four points
+
+<AccordionGroup>
+  <Accordion title="1 · The decision is a remote call on the request path" icon="tower-broadcast">
+    `coreExternalAPI.checkPermission(...)` is an HTTP call, per protected request.
+
+    **ADR-32 names this alternative and rejects it**, for two reasons:
+
+    - It makes another service the **availability and p99 floor** of every request this platform
+      serves.
+    - **It cannot see `tasks.scopes`.** The third dimension is derived from columns on the work itself,
+      which no external service can read — so a remote authorizer cannot evaluate it at all.
+
+    `workspace-ops` therefore loads a **policy snapshot at boot**, holds it in memory, and reloads on
+    an invalidation signal. **No authorization service is called on the request path.**
+  </Accordion>
+
+  <Accordion title="2 · There is no scope dimension" icon="filter">
+    The annotation carries `resource` and `action`. There is no third part.
+
+    §11's permission is `<resource>:<action>:<scope>`, and §13.8 records what happened when the scope
+    was specified without a column to evaluate it against: *"§11 enforces a three-part permission whose
+    third part had no column"* — **unimplementable as written** until `scopes text[]` was added to four
+    tables.
+
+    Without it, `task:read` is all-or-nothing. With it, a compliance reviewer holds `task:read` inside
+    `queue:compliance` and holds nothing at all inside `queue:treasury`.
+
+    <Warning>
+      This is not a defect in the code above — that service's model is role-and-resource, and it is
+      consistent. It is the dimension `workspace-ops` could not do without, and the reason the
+      permission has three parts rather than two.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="3 · Every guard is an annotation, so a forgotten one fails open" icon="triangle-exclamation">
+    There is one guard, and it is declared per method. A method with no `@RequirePermission` is simply
+    unprotected — the endpoint ships, no check runs, and **nothing in review looks wrong, because the
+    missing thing is invisible**.
+
+    §11 splits the guards precisely here:
+
+    | Guard | How |
+    | --- | --- |
+    | `module:<name>:access` | **Derived from the route prefix.** Cannot be omitted, because it is not written |
+    | `<resource>:<action>:<scope>` | Declared per operation |
+
+    *"A decorator can be omitted; a route prefix cannot."*
+
+    The asymmetry is the design: the guard most likely to be forgotten is taken out of human hands.
+  </Accordion>
+
+  <Accordion title="4 · One property disables every check" icon="power-off">
+    ```java
+    @Value("${app.security.require-permission.enabled:true}")
+    private boolean requirePermissionEnabled;
+    ```
+
+    It defaults to `true` and is **not set in any configuration file**, so it is on. The comment marks
+    it *temporary*.
+
+    But it is a single property that turns off **all 338 checks at once**, and nothing in the running
+    system announces that state beyond a `debug` log line per request.
+
+    §11 has no equivalent, and the route-derived module guard **cannot** have one: it is a property of
+    where the endpoint lives, not a value that can be read from configuration.
+  </Accordion>
+</AccordionGroup>
+
+## Two things visible in the code worth naming
+
+<Warning>
+  **`servicePermission` is declared, read, and never set.** The annotation declares it, the aspect
+  branches on it — and **no call site in the service passes it**. All 338 use the default.
+
+  A flag whose only consumer is the code reading its own default is a branch that has never executed.
+  Worth either using or removing, because a reader reasonably assumes it does something.
+</Warning>
+
+<Note>
+  **The role is sent as a lower-cased display name** — `getRoleName().toLowerCase()`. That makes the
+  role string a coupling between two services with no shared type, where a rename on either side is a
+  silent authorization change.
+
+  §11 avoids the class of problem by not sending an identity for a remote decision at all: the
+  snapshot is loaded once, and the principal is resolved locally from the **`email` claim**.
+</Note>
+
+## The same model, under §11
+
+Keeping the annotation shape — because it is a good shape — and changing the four things above.
+
+```java
+/** Only the resource permission is annotated. The module guard is derived. */
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface RequirePermission {
+
+    /** "<resource>:<action>" — the scope is NOT written here. */
+    String value();
+
+    /** How the third dimension is resolved for this operation. */
+    ScopeSource scope() default ScopeSource.FROM_ROW;
+
+    enum ScopeSource {
+        FROM_ROW,    // single resource: read the labels off the row
+        LABEL_SET,   // list: yield the granted labels, let the repository filter
+        GLOBAL       // a global resource; never implied by module access
+    }
+}
+```
+
+<Note>
+  **The scope is deliberately not a string in the annotation.** A hard-coded `queue:compliance` would
+  freeze a policy decision into code — and scope is derived from the row at creation, which no
+  annotation can know.
+</Note>
+
+### The guard that is not annotated
+
+```java
+@Component
+class ModuleAccessFilter extends OncePerRequestFilter {
+
+    private static final Pattern PREFIX =
+            Pattern.compile("^/api/v1/(?<module>[a-z][a-z0-9-]*)(?:/|$)");
+
+    private final Authz authz;                 // local, in-memory. No call leaves this process.
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+            throws IOException, ServletException {
+
+        Matcher m = PREFIX.matcher(req.getRequestURI());
+        if (!m.find()) { chain.doFilter(req, res); return; }
+
+        if (!authz.enforce(principals.current(), "module:" + m.group("module"), "access")) {
+            deny(res, "module", "module:" + m.group("module") + ":access");
+            return;
+        }
+        chain.doFilter(req, res);
+    }
+}
+```
+
+### The aspect, with the third dimension
+
+```java
+@Around("@annotation(required)")
+public Object enforce(ProceedingJoinPoint pjp, RequirePermission required) throws Throwable {
+    String[] p = required.value().split(":", 2);
+    String resource = p[0], action = p[1];
+    Principal subject = principals.current();
+
+    switch (required.scope()) {
+        case FROM_ROW -> {                       // you have the row, so you have its labels
+            Set<String> labels = rows.labelsFor(pjp);
+            if (!authz.enforceAny(subject, resource, action, labels))
+                throw new PermissionDenied(resource, action, labels);
+        }
+        case GLOBAL -> {                         // module access does NOT imply this
+            if (!authz.enforceGlobal(subject, resource, action))
+                throw new PermissionDenied(resource, action, Set.of("*"));
+        }
+        case LABEL_SET -> {                      // a list has no row yet — filter in SQL
+            GrantedScopes granted = authz.grantedScopes(subject, resource, action);
+            if (granted.isEmpty() && !granted.wildcard())
+                throw new PermissionDenied(resource, action, Set.of());
+            GrantedScopesHolder.set(granted);
+        }
+    }
+    try { return pjp.proceed(); } finally { GrantedScopesHolder.clear(); }
+}
+```
+
+### The list filter, and the arm that must not be dropped
+
+```sql
+-- unless the subject holds the wildcard for this (resource, action)
+WHERE (scopes = '{}' OR scopes && :granted_scopes)
+```
+
+<Warning>
+  **The `scopes = '{}'` arm is mandatory.** An empty array means **unscoped and visible**.
+
+  Drop it and every unscoped row disappears for everyone — while looking exactly like a permissions
+  bug, which is the hardest kind of defect to attribute.
+</Warning>
+
+### Boot behaviour — asymmetric on purpose
+
+```java
+Snapshot snap = client.loadFor(SERVICE_CODE)
+    .orElseThrow(() -> new IllegalStateException(
+        "No authorization snapshot at boot. Refusing to start: a process that starts " +
+        "with no policy denies every request — an outage wearing the costume of a bug."));
+authz.replace(snap);
+client.onInvalidation(authz::replace);          // < 5 s p99
+```
+
+| Situation | Behaviour |
+| --- | --- |
+| No snapshot **at** boot | **Refuse to start** |
+| Auth service unreachable **after** boot | **Keep serving** the last snapshot, and alert |
+
+<Warning>
+  **The enforcer, the snapshot loader and the watcher are not written here** — they come from the
+  estate's shared client package.
+
+  A hand-rolled copy would be one more implementation of a security control the estate has already
+  demonstrated it cannot keep consistent across services. That is the whole reason the policy moved
+  out.
+</Warning>
+
+## The comparison, in one table
+
+| | The annotation above, as it runs | Under §11 |
+| --- | --- | --- |
+| Dimensions | resource · action | resource · action · **scope** |
+| Decision | **Remote call**, per request | **Local**, from an in-memory snapshot |
+| Module guard | None — one annotated guard | **Derived from the route prefix** |
+| A forgotten annotation | Endpoint is unprotected | Module guard still runs |
+| Global resources | Not distinguished | **Three, separately granted**, never implied |
+| Kill switch | One property disables all 338 checks | None, and the derived guard cannot have one |
+| On transport failure | **Fails closed** ✅ | No transport to fail |
+| Denial | A message string | Names the **exact permission** required |
+
+<CardGroup cols={2}>
+  <Card title="Applying it" icon="pen-to-square" href="/reference/applying">
+    Choosing the scope, and where to look when something is denied.
+  </Card>
+  <Card title="The decision behind it" icon="gavel" href="/engineering/platform/authorization">
+    Why the policy is authored elsewhere, and the three alternatives that were rejected.
+  </Card>
+</CardGroup>

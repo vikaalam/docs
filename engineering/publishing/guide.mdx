@@ -1,0 +1,181 @@
+---
+title: "Publishing events"
+description: "What a source service has to do — and why an outbox, not three lines in a controller"
+icon: "tower-broadcast"
+mode: "wide"
+---
+
+A source service becomes a **publisher** by stating facts. This page is the pattern; the per-service
+detail is a separate, deployment-specific document.
+
+## The decision that matters
+
+<Warning>
+  **Not a direct write to the stream after the transaction commits.**
+
+  The tempting implementation is one line right after the insert. It is one file, and it is wrong for
+  a specific, evidenced reason.
+</Warning>
+
+```
+tx commit ──✓── XADD ──✗ Redis down / pod killed / network blip
+                   └── event lost, no row, no counter, nobody knows
+```
+
+The business row exists, and nothing downstream will ever hear about it. **There is no retry, because
+there is no record that a send was owed.**
+
+That is precisely the condition this platform exists to end: in the audited estate, ~50 notifications
+in one service are sent fire-and-forget, each wrapped in a catch that logs and returns, with the
+return value discarded at nearly every call site — and **all 139 send sites across the estate work
+this way.**
+
+## The transactional outbox
+
+The outbox makes the **intent to publish** part of the same transaction as the fact.
+
+```
+┌─ one transaction ────────────────────┐
+│  INSERT <the business row>           │
+│  INSERT event_outbox                 │   ← intent, durable
+└──────────────────────────────────────┘
+                 │
+        pump (separate process)
+                 │
+              XADD ──✗ fails? row stays pending, retried with backoff
+                    ──✓ sent_at set
+```
+
+<Note>
+  The pump uses `FOR UPDATE SKIP LOCKED` even in a single-instance deployment. It costs nothing and
+  removes a whole class of future surprise.
+</Note>
+
+## The publisher's checklist
+
+<Steps>
+  <Step title="Pick a door">
+    **Redis Streams** if the service is already inside the trusted network and has a Redis client.
+    **HTTP** if it cannot reach Redis, needs a synchronous answer, or adding a Redis dependency is
+    unacceptable.
+
+    Both feed the identical matcher. Neither is a lesser path.
+  </Step>
+  <Step title="Add an outbox table in your own database">
+    Not in the platform's. The intent must be atomic with **your** write.
+  </Step>
+  <Step title="Mint an eventId — and mint exactly one per occurrence">
+    Required on both doors. It identifies the **occurrence**, not the thing.
+
+    <Warning>
+      **Pick one naming taxonomy before minting.** In the audited estate, a dual taxonomy means
+      **eight call sites insert two rows per fact** under different type values — so
+      application-level dedupe never sees a duplicate.
+
+      A publisher that does not pick one enters **one fact as two events** that pass every guard.
+    </Warning>
+  </Step>
+  <Step title="Carry occurredAt from the fact, not from the send">
+    The time the thing happened, not the time your pump got to it. Several audited sends computed the
+    real timestamp one line above the send and dropped it.
+  </Step>
+  <Step title="Carry the subject as a type and a reference">
+    Routing, the cycle guard, and the audit trail all key on it. Buried in a free-form payload it
+    cannot be indexed.
+  </Step>
+  <Step title="Carry facts, not pointers">
+    `{type, id}` forces the consumer to hold **your database credential** and re-read a row that may
+    have changed. The complete fact object is usually one to three lines above the send.
+  </Step>
+  <Step title="Carry the actor when a human acted">
+    The approver is read from the session and written to your database one line earlier. Every audited
+    rejection notice omitted both the rejecting reviewer and the reason.
+  </Step>
+  <Step title="Money as decimal strings">
+    <Warning>
+      **Re-read the column as a string.** Do not stringify a value that is already a lossy float —
+      some paths in the estate sum a high-precision decimal as a double, and on one of them **the
+      float decides whether the event fires at all**.
+    </Warning>
+  </Step>
+  <Step title="Register the event type">
+    A registered event type **is** its HTTP ingress endpoint. Until it exists, the door answers `404`.
+  </Step>
+</Steps>
+
+## What a publisher must never put in an envelope
+
+`severity` · `recipients` · `channel` · `template` · `actions` · `assignee` · `priority`
+
+<Warning>
+  Each of those is a **decision**, not a fact. They are rejected as `invalid`, not silently ignored,
+  and they are declared in the published JSON Schema so a validator can **name the offender**.
+
+  Allowing them puts routing policy back into your codebase — the condition this platform exists to
+  end.
+</Warning>
+
+## The wire shape
+
+```
+XADD <domain>:events MAXLEN ~ <n> * envelope '<the envelope JSON, verbatim>'
+```
+
+<Note>
+  **One field, not flattened pairs.** A Redis entry is natively a map, so spreading the envelope
+  across separate fields is the obvious move and the wrong one — it creates a **second wire
+  representation** that has to be kept in step with the JSON the HTTP door receives.
+
+  Two representations of one contract is exactly the "behaviour on only one transport" defect the
+  contract forbids, arriving through the back door.
+
+  It is called `envelope` and not `payload` because the envelope *has* a payload, called `data`. A
+  field name that could mean either is a name that will be read wrong at 3am.
+</Note>
+
+## Naming
+
+**`<domain>.<entity>.<past-tense-verb>`**
+
+| Good | Bad | Why |
+| --- | --- | --- |
+| `treasury.deposit.received` | `treasury.deposit.notify_compliance` | The second is an **instruction**, and an instruction in an envelope means the publisher decided something that is not theirs |
+| `customer.account.created` | `customer.account.create` | Past tense is the enforcement of *"publishers state facts"* |
+
+## Migration is a strangler, not a switch
+
+<Steps>
+  <Step title="Keep your existing sends">
+    And **additionally** publish events.
+  </Step>
+  <Step title="The platform shadows you">
+    Consuming those events and sending to the same destination, marked, in parallel.
+  </Step>
+  <Step title="Compare for a fixed period">
+    A missing message is a **matcher defect**, not an acceptable difference.
+  </Step>
+  <Step title="Then remove the direct calls">
+    **One publisher at a time.**
+  </Step>
+</Steps>
+
+<Note>
+  Running both paths side by side is the only way to discover the notifications that exist in code but
+  that **nobody documented** — which is the entire reason this project exists.
+</Note>
+
+## Before you write any of it
+
+<Card title="Validate against the envelope schema" icon="envelope" href="/api/event-envelope">
+  The one contract a publishing service actually needs — machine-checkable, with the three things it
+  cannot check named explicitly.
+</Card>
+
+<Card title="Read the estate assessment" icon="clipboard-list" href="/engineering/publishing/estate">
+  Which services can publish today, which cannot, and what each one's constraint actually is.
+</Card>
+
+<Card title="Then read the hazards" icon="triangle-exclamation" href="/engineering/publishing/hazards">
+  Four measured things the contract has to survive — and the 32 occurrences that cannot be published
+  at all until the source service changes.
+</Card>

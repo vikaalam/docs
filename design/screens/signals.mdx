@@ -1,0 +1,152 @@
+---
+title: "Gallery · Signals"
+description: "Events, workflows, and the registry — the configurator's screens"
+icon: "bolt"
+mode: "wide"
+---
+
+Everything owned by `automation`. This is where a configurator lives.
+
+## Events
+
+<img src="/images/screens/events.webp" alt="Events — the ingest history, including events that produced nothing" noZoom />
+
+Every event received, whatever its disposition, grouped by business domain. The first column carries
+the **signal path** — five segments, so a page reads as a shape before it reads as words.
+
+## Events — read-only
+
+<img src="/images/screens/events-readonly.webp" alt="Events, read-only for compliance" noZoom />
+
+The same stream for a reader who traces it but never configures it. **The read-only presentation is a
+permission boundary made visible, not a simplification.**
+
+## Event detail
+
+<img src="/images/screens/event-detail.webp" alt="Event detail — why this event did that" noZoom />
+
+The answer to *"why did this event do that?"* — the signal path at full size, the workflows that
+matched, and each action's own status, attempt count and error.
+
+<Note>
+  Four things the specification names are rendered as **absences with the reason stated**, rather than
+  invented: the trace identifier, two counts, and the timing pair. **A dash and a "not recorded" mean
+  different things and are never collapsed.**
+</Note>
+
+## Workflows
+
+<img src="/images/screens/workflows.webp" alt="Workflows — condition, priority, exclusive, disposition, actions" noZoom />
+
+The configuration editor for condition, priority, exclusive, disposition, and the ordered action list.
+
+<Note>
+  **Disposition is the one coloured categorical dimension** on this screen: `act` is silent because it
+  is thirteen rows in sixteen; `observe` and `suppress` carry pills.
+
+  And the primary action is **"browse unmapped events"**, not *"create workflow"* — a workflow is only
+  ever built from a shape that already arrived.
+</Note>
+
+## Event types
+
+<img src="/images/screens/event-types.webp" alt="Event types — the registry that creates ingress endpoints" noZoom />
+
+The registry. **Registering a row creates its HTTP ingress endpoint immediately** — which is why a
+`404` and an `unmapped` are deliberately different answers.
+
+## Subject types
+
+<img src="/images/screens/subject-types.webp" alt="Subject types — shape validation, never existence" noZoom />
+
+Owns the distinction between validating a reference's **shape** and validating its **existence**. The
+reference stays opaque, so the declared format is the only checkable thing — and it is **rendered
+verbatim** rather than described.
+
+<Note>
+  Two warning states carry all the colour on this screen: a type whose format accepts anything
+  (provisional), and a type referenced by **zero** event types.
+</Note>
+
+## Record types
+
+<img src="/images/screens/record-types.webp" alt="Record types — typed, retained projections" noZoom />
+
+The supply side of the *observe versus record* refusal. A `record` action writes a typed, retained
+projection, and it is **the only configuration that satisfies a retention obligation longer than the
+ingest window**.
+
+The warning row is the sharpest kind: a record type whose oldest row **predates its own declared
+retention**.
+
+## Publishers
+
+<img src="/images/screens/publishers.webp" alt="Publishers — who may inject events, into which domains" noZoom />
+
+A **global resource**, with the treatment that comes with it. Owns who may inject events, and into
+which domains.
+
+<Note>
+  The default listing is **all publishers, code ascending** — not active-only. Hiding inactive keys
+  would hide the ones most likely to be a problem, which is why a key idle for months with zero events
+  is on screen.
+
+  Rejected-request counts are drawn **and flagged**: they have no source column anywhere yet, and the
+  screen says so.
+</Note>
+
+## Streams
+
+<img src="/images/screens/streams.webp" alt="Streams — the one door with no API key" noZoom />
+
+`automation` is the only stream reader, and this is **the one door with no API key** — network
+position is the boundary, and the screen states it rather than leaving it to be assumed.
+
+<Note>
+  Disabling a subscription stops reading; the stream keeps accumulating and is processed on
+  re-activation. So a disabled subscription renders **neutral, never error**.
+
+  The pending count is drawn and labelled as a **live read, not stored state** — because it has no
+  column, and a number that looks persisted would be mistaken for one.
+</Note>
+
+## Consequence preview
+
+<img src="/images/screens/consequence-preview.webp" alt="Consequence preview — what would run, what would not, and why" noZoom />
+
+*"What will this event actually do?"* — answered before one is fired. **Nothing is written and nothing
+is published, and the pane header says so.**
+
+An active exclusive suppressor renders first, and everything below greys out as *would not run*.
+**Non-matches are listed, never hidden.**
+
+## Simulator
+
+<img src="/images/screens/simulator.webp" alt="Simulator — firing a real event, with type-to-confirm" noZoom />
+
+The one screen in the product that **emits**. Publish is deliberately kept off the preview so that
+*"which button fires real traffic?"* has exactly one answer.
+
+The confirmation takes the lower half: blast radius as **measured numbers**, what will *not* happen,
+and type-to-confirm on the event type code.
+
+## Explainers
+
+<Tabs>
+  <Tab title="How events become work">
+    <img src="/images/screens/how-events-become-work.webp" alt="The ingest pipeline walked step by step" noZoom />
+
+    Publish → ingress → guards → match → actions → work → return, as prose steps.
+  </Tab>
+  <Tab title="Event → task, as a graph">
+    <img src="/images/screens/event-to-task-workflow.webp" alt="The same pipeline as a workflow graph" noZoom />
+
+    The same content, redrawn as connected nodes with branches. Same pipeline, different lens.
+  </Tab>
+</Tabs>
+
+<CardGroup cols={3}>
+  <Card title="Work" icon="list-check" href="/design/screens/work" />
+  <Card title="Configure" icon="sliders" href="/design/screens/configure" />
+  <Card title="Records" icon="box-archive" href="/design/screens/records" />
+</CardGroup>

@@ -1,0 +1,123 @@
+---
+title: "Failure handling"
+description: "Every failure mode, its symptom, and its handling"
+icon: "triangle-exclamation"
+mode: "wide"
+---
+
+## The table
+
+| Failure | Symptom | Handling |
+| --- | --- | --- |
+| **Event type not configured yet** | Nothing happens | `unmapped`, envelope stored, appears as a work queue with *"build a workflow from this event"* |
+| **Invalid envelope** | — | `invalid`, still acknowledged so it does not block the stream; visible on the dashboard |
+| **Duplicate event** | — | The key insert conflicts → `duplicate`; the HTTP door answers `409`. **Not** a constraint on the partitioned ingest table |
+| **Publisher uses a wrong key or an out-of-scope domain** | `401` / `403` | **Payload not stored** — recorded as a metric, not a row. *An unauthenticated body is not evidence* |
+| **`emit` loop between two workflows** | Runaway | Depth guard → `depth_exceeded`; repeated event type **and subject** in the causation chain → `cycle_detected` |
+| **Provider returns 5xx or times out** | Step stalls | Per-invocation retry with backoff; past the budget the invocation is `dead` and the process step `failed` |
+| **Provider is slow** | — | **Mandatory per-provider timeout** (default 5 s, ceiling 15 s); a timeout counts as a failed attempt |
+| **Provider callback never arrives** | Instance waits forever | The step timer fires → escalation → hard deadline → `expired` |
+| **Destination points at the internal network** | Potential SSRF | Destination allowlist, private-CIDR block, **redirects not followed**, separate global permission |
+| **Action executed twice** | Double effect downstream | Derived idempotency key **locally**; the header sent outbound as best-effort. Where the effect must be at-most-once, it is achieved locally by mark-before-call plus reconciliation — **never by assuming the far side dedupes** |
+| **No responsible person resolves** | Nobody told, nothing assigned | The notify action ends `no_recipient` — **not `succeeded`** — so the event becomes `partial` and appears in the same queue as a failed action. **One screen, one story** |
+| **Assignee deactivated upstream** | Task orphaned | The projection deactivates them; the SLA timer escalates to the fallback in the responsibility chain |
+| **Notifier down while the outbox has rows** | Notifications delayed | Pump retry with backoff; past the threshold `dead` and **visible**. Ingest is unaffected |
+| **Two workers running concurrently** | Risk of double send | Worker role + advisory lock + `SKIP LOCKED` + idempotent transaction ids |
+| **`workspace-ops` down** | — | Events remain in the stream un-acknowledged and are processed on recovery |
+| **Consumer dies after read, before acknowledge** | Stuck message | Periodic reclaim |
+| **Audit write fails** | Business change rolls back | **Deliberate.** Surfaced as a `5xx`, never as a silent skip |
+
+## The three patterns behind the table
+
+<AccordionGroup>
+  <Accordion title="Nothing is dropped quietly" icon="eye">
+    Every failure mode above either produces a **visible queue item** or is counted.
+
+    The one deliberate non-row is a rejected publisher request: an unauthenticated body is not stored,
+    because storing it would make the platform a place to inject unverified content. It is a metric.
+  </Accordion>
+  <Accordion title="Configuration defects are separated from delivery failures" icon="wrench">
+    `depth_exceeded` and `cycle_detected` are configuration defects, and are surfaced differently for
+    that reason.
+
+    **Two workflows baiting each other will fill Redis and the ingest history long before anyone reads
+    a log line** — and it needs a configurator, not an on-call engineer.
+  </Accordion>
+  <Accordion title="A degraded capability is not a degraded platform" icon="plug">
+    A capability reports at boot whether its driver is present and healthy. **A missing driver degrades
+    one capability, never the process.**
+
+    If the notifier is down, ingest continues and notifications queue in the outbox. Refusing to start
+    would turn a vendor outage into a platform outage.
+  </Accordion>
+</AccordionGroup>
+
+## Two failures the design specifically anticipates
+
+These came from the estate audit, not from imagination.
+
+<Warning>
+  **Alerting inverted relative to severity.** One service has 51 send sites and **every one is inside a
+  `catch` block** — there is no success notification at all. Meanwhile the one genuinely unrecoverable
+  failure, a partner callback exhausting its retries, is dropped by a bare attempt-count check and
+  notifies nobody.
+
+  **Transient failure screams; permanent failure is silent.** `dead` is a visible state for exactly
+  this reason.
+</Warning>
+
+<Warning>
+  **A message that vanishes inside a success.** A missing routing key sent to `channel: undefined`,
+  which the chat API answered `ok:false` **inside an HTTP 200** — and the error was swallowed.
+  Messages disappeared with no trace and no counter.
+
+  This is why a delivery has its own outcome and why `no_recipient` makes its event `partial`.
+</Warning>
+
+## The waiting-with-no-timer guard
+
+<Note>
+  A case waiting on something that will never arrive, **with no armed timer**, is invisible by
+  construction: it never fails, so nothing alerts.
+
+  A periodic single-active guard looks for exactly that state. It exists because nothing else would
+  find it.
+</Note>
+
+## Health endpoints
+
+| Endpoint | Touches | Drives |
+| --- | --- | --- |
+| `/health/live` | **No dependency** | The restart policy |
+| `/health/ready` | Database, stream, notifier | The load balancer |
+| `/health/capabilities` | Every driver, and which optional methods it implements | Operational visibility |
+
+<Warning>
+  **Merging live and ready turns a momentary Redis blip into a restart loop.**
+</Warning>
+
+## Dead letters are one screen, not seven
+
+A separate dead-letter table alongside a `dead_at` column on each module's outbox is **two
+representations of one fact**.
+
+But an operator needs **one screen**, and seven screens is how a dead letter goes unnoticed.
+
+<Note>
+  The resolution: the cross-module dead-letter queue is a **read-only `UNION` view**, granted to the
+  operator role and to no module's database role.
+
+  It is the platform's **only sanctioned cross-schema read**, and it is named as an exception so it is
+  never cited as precedent.
+</Note>
+
+Dead outbox rows are also **never swept by retention** — they are a work queue.
+
+<CardGroup cols={2}>
+  <Card title="Deployment" icon="server" href="/engineering/platform/deployment">
+    Which jobs are concurrent and which are leader-elected.
+  </Card>
+  <Card title="Open questions" icon="circle-question" href="/engineering/open-questions">
+    Including the two concentration risks recorded rather than solved.
+  </Card>
+</CardGroup>

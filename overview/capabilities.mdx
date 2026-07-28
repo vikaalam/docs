@@ -1,0 +1,124 @@
+---
+title: "What it does"
+description: "The feature set, stated as capabilities and requirements"
+icon: "layer-group"
+---
+
+## The eight capabilities
+
+Read this as the product's feature set. Each is one module.
+
+<AccordionGroup>
+  <Accordion title="directory — people, teams, and who is responsible for what" icon="address-book">
+    A projection of the company identity provider, plus **responsibility rules that are ours**.
+
+    Answers *"who should do this, or be told?"* — the one question no amount of refactoring inside
+    the existing services would have produced an answer to.
+
+    A person deactivated upstream stops receiving work here with no manual step.
+  </Accordion>
+  <Accordion title="automation — the reflex layer" icon="bolt">
+    Event ingress on two doors, workflow matching, and an ordered list of independent actions.
+    Stateless per event.
+
+    Also the **only reader of the event stream** — internal modules publish through it exactly like
+    external systems do, which is what makes the operational timeline one queryable list.
+  </Accordion>
+  <Accordion title="process — long-running, resumable, versioned cases" icon="diagram-project">
+    Steps that are automatic, human, waiting, branching, or parallel. Each instance is **pinned to
+    the definition version in force when it started**, so a regulated case is auditable against the
+    rules that applied to it.
+
+    Answers *"where is this case, and why is it stuck?"*
+  </Accordion>
+  <Accordion title="task — a unit of human work" icon="list-check">
+    Assignment, lifecycle, SLA, form, comments, attachments. Team queues and a per-person list.
+
+    The owner is resolved from responsibility rules — never hard-coded, never a channel name.
+  </Accordion>
+  <Accordion title="notification — the last mile to a person" icon="bell">
+    Recipient resolution, channel policy, hand-off to the notifier driver. Renders nothing and
+    decides nothing about *why*.
+
+    A send with nobody to receive marks the event `partial` — **never green**.
+  </Accordion>
+  <Accordion title="integration — the only outbound door" icon="plug">
+    Connectors to external providers and receivers for their callbacks. The only holder of vendor
+    credentials and the only place the SSRF guard lives.
+
+    Callers ask for a **logical capability** — `identity.verify`, `screening.sanctions` — and never
+    learn which vendor answered.
+  </Accordion>
+  <Accordion title="reporting — output with evidence" icon="file-invoice">
+    Versioned report definitions, reproducible runs, generated artifacts, and **proof of submission**.
+
+    A run is not done until a receipt comes back.
+  </Accordion>
+  <Accordion title="audit — the immutable record" icon="shield-check">
+    Query and export of every actor-attributed change, including **rejected attempts**. Read-only —
+    writing happens through a platform capability inside the caller's own transaction.
+
+    Append-only is enforced by database grants, not by discipline.
+  </Accordion>
+</AccordionGroup>
+
+## Functional requirements
+
+| # | The system must… |
+| --- | --- |
+| **FR-1 · Ingest** | Accept events on both doors, require an `eventId`, and record every arrival — **including ones that produce nothing** — in one queryable history |
+| **FR-2 · De-duplicate** | Drop a redelivered event by its `eventId`, and stop a genuine loop by event type **and** subject |
+| **FR-3 · Match** | Resolve an event to zero or more workflows; a registered-but-unhandled event is `unmapped`, a deliberately log-only one is `observed` |
+| **FR-4 · Act** | Execute a workflow's ordered actions — `notify` / `create_task` / `start_process` / `signal_process` / `call` / `project` / `record` / `emit` |
+| **FR-5 · Process** | Run versioned, resumable instances with automatic, human, waiting, branching and parallel steps; **pin each instance to the version in force when it started** |
+| **FR-6 · Task** | Assign human work with an owner resolved from responsibility rules, an SLA, a form, comments and attachments; expose team queues and a per-person list |
+| **FR-7 · Notify** | Resolve recipients, apply channel policy, hand off to the notifier; **a send with nobody to receive marks the event `partial`, never green** |
+| **FR-8 · Integrate** | Call vendors through logical capabilities, hold credentials in one place, receive signed callbacks, and record every invocation |
+| **FR-9 · Report** | Produce versioned reports, store artifacts, submit to a **named destination**, and retain the submission receipt as proof |
+| **FR-10 · Audit** | Record every mutating change **and every rejected attempt** with actor, before/after, and correlation — append-only and tamper-evident |
+| **FR-11 · Configure** | Let a configurator edit all of the above as data in the interface, with a before/after diff and an export/import to a diffable file |
+| **FR-12 · Authorize** | **Enforce, never author.** Module access plus a three-part permission (`resource:action:scope`), scoped by queue and counterparty |
+
+## Non-functional requirements
+
+| Area | Requirement |
+| --- | --- |
+| **Reliability** | A missing capability driver degrades **one capability, never the whole process**. Notifications queue in an outbox during a vendor outage. Multiple pump workers run; only timer scanners and the sealer are single-active |
+| **Durability** | Every published event is written to an outbox **inside the same transaction as the change**, then pumped out — no event is lost on a crash |
+| **Security** | Permission checks on every route; authentication from the identity provider (no passwords issued); vendor credentials and destinations are separately-granted global resources; inbound vendor callbacks must be signature-verified |
+| **Auditability** | Append-only enforced by **database grants**, not discipline; hourly Merkle seals for tamper-evidence; **a denied permission is itself recorded** |
+| **Data integrity** | Money and amounts are decimal **strings** inside JSON, never floating-point; a subject reference's *shape* is validated at ingest, its *existence* never is |
+| **Portability** | A whole new operational domain is one new module plus one registry line. Existing modules untouched |
+
+## Product principles
+
+The ten rules that shape everything else.
+
+| # | Principle |
+| --- | --- |
+| **P1** | **Never a silent success** — every dead end surfaces as work |
+| **P2** | **Configuration is the product surface** — workflows, rules, task types, channel policy and report definitions are *data*. A new reaction needs no deploy |
+| **P3** | **Company-agnostic core** — subjects are opaque, vendor capabilities are logical, every domain concept enters as seed configuration. Enforced by a CI gate |
+| **P4** | **Two doors, one pipeline** — a behaviour on only one transport is a defect |
+| **P5** | **All matching workflows run** — priority orders them, it does not select |
+| **P6** | **One outbound door** — `integration` alone holds credentials and the SSRF guard |
+| **P7** | **Audit is written inside the business transaction** — if the audit write fails, the change rolls back |
+| **P8** | **Deploy per company, not multi-tenant** — no tenant column anywhere |
+| **P9** | **Erasure by crypto-shredding** — personal data is encrypted per subject; erasure destroys the key while the record survives |
+| **P10** | **Named destinations, never free-form URLs** — a destination is a configured, permission-controlled row |
+
+## What it is deliberately not
+
+Naming these keeps the platform from quietly absorbing them.
+
+- **Not a system of record** for business entities — no customer, transaction, balance, or ledger.
+- **Not a BPMN engine** — processes cover sequence, branch, parallel, wait and timer. Nothing more.
+- **Not a chat product** — notification hands off to a driver; conversations stay in the chat tool.
+- **Not an analytics warehouse** — defined operational and regulatory reports only.
+- **Not an identity provider** — authentication comes from the company IdP.
+- **Not a policy administration point** — roles and grants are authored elsewhere and enforced here.
+- **Not a business rules engine** — matching conditions are declarative and intentionally limited.
+
+<Card title="Next: the delivery roadmap" icon="road" href="/overview/roadmap">
+  Five vertical slices, each ending with something in production.
+</Card>

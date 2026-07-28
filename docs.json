@@ -1,53 +1,402 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "Workspace Operation",
+  "description": "The operational layer in one place — event ingress, automatic reactions, long-running processes, human work, notification, vendor integration, regulatory reporting, and audit.",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#7B68EE",
+    "light": "#9F90F3",
+    "dark": "#5A45D9"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/images/logo.png",
   "navigation": {
-    "pages": [
+    "tabs": [
       {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
+        "tab": "Overview",
+        "groups": [
+          {
+            "group": "Start here",
+            "pages": [
+              "index",
+              "overview/how-to-read-this",
+              "overview/problem",
+              "overview/core-idea",
+              "overview/event-journey",
+              "overview/who-uses-it",
+              "overview/capabilities"
+            ]
+          },
+          {
+            "group": "Orientation",
+            "pages": [
+              "overview/roadmap",
+              "overview/glossary",
+              "overview/faq",
+              "document-structure"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "For Operations",
+        "groups": [
+          {
+            "group": "What changes for you",
+            "pages": [
+              "operations/index",
+              "operations/day-in-the-life",
+              "operations/vocabulary",
+              "operations/faq"
+            ]
+          },
+          {
+            "group": "The screens you live in",
+            "pages": [
+              "operations/attention",
+              "operations/my-tasks",
+              "operations/task-detail",
+              "operations/queues",
+              "operations/cases",
+              "operations/notifications"
+            ]
+          },
+          {
+            "group": "Your subject areas",
+            "pages": [
+              "operations/subjects/index",
+              "operations/subjects/deposits",
+              "operations/subjects/parties",
+              "operations/subjects/virtual-accounts",
+              "operations/subjects/instructions"
+            ]
+          },
+          {
+            "group": "Worked examples",
+            "pages": [
+              "operations/scenarios/deposit-escalation",
+              "operations/scenarios/maker-checker",
+              "operations/scenarios/onboarding",
+              "operations/scenarios/nothing-happened"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "For Compliance",
+        "groups": [
+          {
+            "group": "Why this matters",
+            "pages": [
+              "compliance/index",
+              "compliance/what-you-gain",
+              "compliance/dashboard"
+            ]
+          },
+          {
+            "group": "Evidence and control",
+            "pages": [
+              "compliance/audit-trail",
+              "compliance/trace",
+              "compliance/four-eyes",
+              "compliance/access-control",
+              "compliance/integrity-and-holds"
+            ]
+          },
+          {
+            "group": "Obligations",
+            "pages": [
+              "compliance/regulatory-reporting",
+              "compliance/retention-and-erasure",
+              "compliance/str-walkthrough",
+              "compliance/control-map"
+            ]
+          },
+          {
+            "group": "Honest limits",
+            "pages": [
+              "compliance/limitations",
+              "compliance/faq"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Engineering",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "engineering/index",
+              "engineering/dividing-principle",
+              "engineering/three-layers",
+              "engineering/module-roster",
+              "engineering/boundaries",
+              "engineering/capabilities"
+            ]
+          },
+          {
+            "group": "The event contract",
+            "pages": [
+              "engineering/events/contract",
+              "engineering/events/envelope",
+              "engineering/events/ingress",
+              "engineering/events/idempotency",
+              "engineering/events/matching-and-actions",
+              "engineering/events/lifecycle"
+            ]
+          },
+          {
+            "group": "Modules",
+            "pages": [
+              "engineering/modules/directory",
+              "engineering/modules/automation",
+              "engineering/modules/process",
+              "engineering/modules/task",
+              "engineering/modules/notification",
+              "engineering/modules/integration",
+              "engineering/modules/reporting",
+              "engineering/modules/audit"
+            ]
+          },
+          {
+            "group": "Platform concerns",
+            "pages": [
+              "engineering/platform/data-model",
+              "engineering/platform/authorization",
+              "engineering/platform/audit-capability",
+              "engineering/platform/company-agnostic",
+              "engineering/platform/deployment",
+              "engineering/platform/failure-handling"
+            ]
+          },
+          {
+            "group": "Integrating a service",
+            "pages": [
+              "engineering/publishing/guide",
+              "engineering/publishing/estate",
+              "engineering/publishing/hazards"
+            ]
+          },
+          {
+            "group": "Decisions and delivery",
+            "pages": [
+              "engineering/delivery-slices",
+              "engineering/decisions",
+              "engineering/open-questions"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Access control",
+            "pages": [
+              "reference/index",
+              "reference/authentication",
+              "reference/authorization",
+              "reference/applying",
+              "reference/implementation"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "groups": [
+          {
+            "group": "The contracts",
+            "pages": [
+              "api/index",
+              "api/event-envelope",
+              "api/conventions",
+              "api/what-is-missing"
+            ]
+          },
+          {
+            "group": "automation",
+            "openapi": "/contracts/openapi.yaml",
+            "pages": [
+              "POST /api/v1/automation/events/{eventTypeCode}",
+              "GET /api/v1/automation/events",
+              "GET /api/v1/automation/events/count",
+              "GET /api/v1/automation/events/{id}",
+              "POST /api/v1/automation/events/{id}/replay",
+              "GET /api/v1/automation/event-types",
+              "GET /api/v1/automation/event-types/{code}",
+              "POST /api/v1/automation/event-types/{code}/preview",
+              "GET /api/v1/automation/subject-types",
+              "GET /api/v1/automation/subject-types/{code}",
+              "POST /api/v1/automation/subject-types/{code}/test",
+              "GET /api/v1/automation/record-types",
+              "GET /api/v1/automation/record-types/{code}",
+              "GET /api/v1/automation/workflows",
+              "GET /api/v1/automation/workflows/{id}",
+              "GET /api/v1/automation/publishers",
+              "POST /api/v1/automation/publishers",
+              "POST /api/v1/automation/publishers/{id}/rotate",
+              "POST /api/v1/automation/publishers/{id}/revoke",
+              "GET /api/v1/automation/streams",
+              "POST /api/v1/automation/simulate"
+            ]
+          },
+          {
+            "group": "integration",
+            "openapi": "/contracts/openapi.yaml",
+            "pages": [
+              "POST /api/v1/integration/callbacks/{providerCode}",
+              "GET /api/v1/integration/providers",
+              "GET /api/v1/integration/providers/{code}",
+              "PATCH /api/v1/integration/providers/{code}",
+              "GET /api/v1/integration/providers/{code}/credentials",
+              "POST /api/v1/integration/providers/{code}/credentials/{id}/rotate",
+              "GET /api/v1/integration/capabilities",
+              "GET /api/v1/integration/destinations",
+              "POST /api/v1/integration/destinations",
+              "PATCH /api/v1/integration/destinations",
+              "POST /api/v1/integration/destinations/resolve",
+              "GET /api/v1/integration/invocations",
+              "GET /api/v1/integration/invocations/{id}",
+              "GET /api/v1/integration/callbacks",
+              "GET /api/v1/integration/callbacks/{id}"
+            ]
+          },
+          {
+            "group": "audit",
+            "openapi": "/contracts/openapi.yaml",
+            "pages": [
+              "GET /api/v1/audit/entries",
+              "GET /api/v1/audit/timeline/{correlationId}",
+              "GET /api/v1/audit/resource/{type}/{id}",
+              "POST /api/v1/audit/export",
+              "GET /api/v1/audit/seals",
+              "GET /api/v1/audit/seals/verify",
+              "GET /api/v1/audit/seals/tail",
+              "GET /api/v1/audit/legal-holds",
+              "POST /api/v1/audit/legal-holds",
+              "POST /api/v1/audit/legal-holds/{id}/release",
+              "GET /api/v1/audit/erasure-requests",
+              "POST /api/v1/audit/erasure-requests",
+              "POST /api/v1/audit/erasure-requests/{id}/decide"
+            ]
+          },
+          {
+            "group": "reporting",
+            "openapi": "/contracts/openapi.yaml",
+            "pages": [
+              "GET /api/v1/reporting/definitions",
+              "GET /api/v1/reporting/definitions/{code}/versions/{v}",
+              "GET /api/v1/reporting/definitions/{code}/versions/{v}/consequence",
+              "GET /api/v1/reporting/fact-types",
+              "GET /api/v1/reporting/runs",
+              "GET /api/v1/reporting/runs/{id}",
+              "GET /api/v1/reporting/runs/{id}/artifact",
+              "GET /api/v1/reporting/runs/{id}/reproducibility",
+              "GET /api/v1/reporting/submissions"
+            ]
+          },
+          {
+            "group": "task",
+            "openapi": "/contracts/openapi.yaml",
+            "pages": [
+              "GET /api/v1/task/tasks",
+              "GET /api/v1/task/tasks/{id}",
+              "POST /api/v1/task/tasks/{id}/claim",
+              "POST /api/v1/task/tasks/{id}/transitions",
+              "GET /api/v1/task/tasks/{id}/comments",
+              "GET /api/v1/task/tasks/{id}/attachments",
+              "POST /api/v1/task/tasks/{id}/attachments/{aid}/download",
+              "GET /api/v1/task/types/{code}",
+              "PUT /api/v1/task/types/{code}"
+            ]
+          },
+          {
+            "group": "directory",
+            "openapi": "/contracts/openapi.yaml",
+            "pages": [
+              "GET /api/v1/directory/people",
+              "GET /api/v1/directory/people/{id}",
+              "GET /api/v1/directory/persons/me",
+              "GET /api/v1/directory/teams",
+              "GET /api/v1/directory/teams/{id}",
+              "GET /api/v1/directory/responsibility",
+              "GET /api/v1/directory/responsibility/{id}/impact",
+              "POST /api/v1/directory/responsibility/resolve"
+            ]
+          },
+          {
+            "group": "process",
+            "openapi": "/contracts/openapi.yaml",
+            "pages": [
+              "GET /api/v1/process/instances",
+              "GET /api/v1/process/instances/{id}",
+              "POST /api/v1/process/instances/{id}/cancel",
+              "GET /api/v1/process/definitions",
+              "GET /api/v1/process/definitions/{code}/versions/{v}",
+              "PUT /api/v1/process/definitions/{code}/versions/{v}",
+              "POST /api/v1/process/definitions/{code}/versions/{v}/publish"
+            ]
+          },
+          {
+            "group": "notification",
+            "openapi": "/contracts/openapi.yaml",
+            "pages": [
+              "GET /api/v1/notification/deliveries",
+              "GET /api/v1/notification/deliveries/{id}",
+              "GET /api/v1/notification/policies",
+              "PUT /api/v1/notification/policies/{id}",
+              "GET /api/v1/notification/policies/{id}/consequence"
+            ]
+          },
+          {
+            "group": "platform",
+            "openapi": "/contracts/openapi.yaml",
+            "pages": [
+              "GET /api/v1/platform/subject-keys",
+              "POST /api/v1/platform/subject-keys/destroy",
+              "GET /api/v1/health/capabilities",
+              "GET /health/live",
+              "GET /health/ready"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Design",
+        "groups": [
+          {
+            "group": "The design",
+            "pages": [
+              "design/index",
+              "design/design-system",
+              "design/navigation",
+              "design/patterns",
+              "design/signal-path"
+            ]
+          },
+          {
+            "group": "Screen gallery",
+            "pages": [
+              "design/screens/work",
+              "design/screens/signals",
+              "design/screens/configure",
+              "design/screens/records"
+            ]
+          }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
+    ]
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/images/logo.png",
+    "dark": "/images/logo.png"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
     "primary": {
       "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "label": "Delivery roadmap",
+      "href": "/overview/roadmap"
     }
   },
   "contextual": {
@@ -55,18 +404,10 @@
       "copy",
       "view",
       "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
+      "claude"
     ]
   },
   "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    "socials": {}
   }
 }

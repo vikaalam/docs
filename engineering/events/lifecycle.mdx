@@ -1,0 +1,173 @@
+---
+title: "Lifecycle and the four stores"
+description: "Every ingest status, and the four stores that are all called the log"
+icon: "database"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/event-detail.webp"
+  alt="Event detail — the signal path, the workflows that matched, and each action's outcome"
+  noZoom
+/>
+
+## Not every event produces work
+
+Most events do not create a task, and many create nothing at all. The system must express that range
+without forcing every event through the same shape.
+
+| Intent | Configuration | Ingest status |
+| --- | --- | --- |
+| Keep the fact, do nothing | A workflow with an empty action list | `observed` |
+| Notify someone | one `notify` action | `dispatched` |
+| Run an automated reaction | `call` / `record` / `emit` | `dispatched` |
+| Create human work | `create_task` | `dispatched` |
+| Create work **and** tell a wider audience | `create_task` + `notify` | `dispatched` |
+| Open a multi-step case | `start_process` | `dispatched` |
+| Deliberately drop noise | An **exclusive** workflow with an empty action list | `suppressed` |
+| **Nobody has configured this yet** | — | `unmapped` |
+
+## The distinction that carries the most weight
+
+<Warning>
+  **An event that produced no action must say whether that was a *decision* or an *omission*.**
+</Warning>
+
+| | `observed` | `unmapped` |
+| --- | --- | --- |
+| Means | Someone decided this is worth keeping and worth nothing else | Nobody has looked at it yet |
+| Is it a work queue? | **No** | **Yes**, with *"build a workflow from this event"* attached |
+| Stored? | Yes, queryable, feeds reporting | Yes |
+
+<Note>
+  Collapsing the two is the mistake that makes the `unmapped` queue **permanently non-empty** — and a
+  queue that is never empty is a queue nobody reads.
+
+  The cost of keeping them apart is one deliberate configuration step to declare an event as log-only.
+  That cost is accepted.
+</Note>
+
+## Every status
+
+| Status | Meaning | Queue? |
+| --- | --- | --- |
+| `dispatched` | Everything configured to run, ran | No |
+| `partial` | Something ran and something did not — **including a notification that reached nobody** | **Yes** |
+| `dead` | An action exhausted its retries | **Yes** |
+| `observed` | A decision to keep and do nothing | No |
+| `suppressed` | An exclusive workflow silenced what was below it | No, but visible |
+| `unmapped` | Registered, no workflow yet | **Yes** |
+| `invalid` | The envelope broke the contract | **Yes** |
+| `duplicate` | This occurrence id already arrived | No |
+| `depth_exceeded` | The causation chain went too deep | **Yes** — configuration defect |
+| `cycle_detected` | The same event type and subject repeated in one chain | **Yes** — configuration defect |
+| `unknown_subject` | The reference did not match its declared format | **Yes** |
+
+<Warning>
+  **`no_recipient` makes the event `partial`, never green.**
+
+  Before this rule, the ingest history showed `dispatched` for an alert nobody received, and the
+  finding lived only in the delivery log.
+
+  The cost, stated: the `partial` queue mixes **two problem classes** — a hole in the responsibility
+  rules, and a dead destination. So the interface distinguishes them by the **action's** status rather
+  than the event's.
+</Warning>
+
+## Four stores that are all called "the log"
+
+Conflating these is the most likely cause of a wrong answer during an incident review.
+
+| Store | Contains | Written by | Retention |
+| --- | --- | --- | --- |
+| `automation.ingested_events` | **Every event received**, verbatim envelope, whatever its disposition | Ingest, always | Months. Partitioned |
+| `automation.records` | A **curated, typed projection** of selected event data | Only when a workflow says so | Per record type |
+| `reporting.report_facts` | Facts shaped for defined reports | The projection handler | Per report retention |
+| `audit.audit_entries` | **Actor-attributed changes to this platform's own state** | The audit capability, in-transaction | Years. Legal hold |
+
+<Warning>
+  **`audit` is not the event log.** It answers *"who changed this workflow / approved this case /
+  downloaded this artifact"*.
+
+  An external system's fact is **not a change to our state** and does not belong there.
+
+  *"Just log this event"* means `observed` — plus, if it needs to be queryable by shape, a `record`
+  action.
+</Warning>
+
+## Four stores are not four timeline sources
+
+<img
+  src="/images/screens/trace.webp"
+  alt="Trace — two store labels, not four"
+  noZoom
+/>
+
+A trace reads **exactly two** of them: the audit entries for changes to our own state, and the ingest
+history for what arrived.
+
+<Note>
+  The other two are **projections, not activity**. A record write and a report-fact write are each
+  *already represented* by their own audit entry — reading them a second time would list one
+  occurrence twice.
+</Note>
+
+And the composition is performed by the **caller**, not by the audit module:
+
+<Warning>
+  `audit` publishes nothing and depends on nothing. Giving it a read of `automation` would create a
+  **second cross-schema read**, where the platform sanctions exactly one and names it as never a
+  precedent.
+</Warning>
+
+Two consequences for any surface rendering a trace:
+
+1. **A store label on a row has a vocabulary of two, not four.**
+2. **The number of modules in a trace is not a coverage metric.** A module consulted without changing
+   state — a responsibility rule that resolved to nobody — correctly produces no row. Its finding
+   survives as the action status that made the event `partial`.
+
+## Observe alone is not a retention strategy
+
+<Warning>
+  `ingested_events` is partitioned and dropped on a months-long schedule. That is correct for an
+  operational history and **silently wrong for a record-keeping obligation measured in years** — the
+  partition drops on time, and the "kept fact" is gone with nothing having failed.
+</Warning>
+
+| Obligation | Configuration |
+| --- | --- |
+| Shorter than the ingest retention window | `observe` is sufficient |
+| **Longer** | `record` is **required**, with its own retention on the record type. `observe` is **refused** |
+
+Two consequences, both deliberate:
+
+- A `record` row is a **typed projection** — chosen fields, redactable — whereas the raw envelope may
+  contain data that never passed a redaction policy.
+- `record` retention is **per record type**, so different obligations do not have to share one number.
+
+<Note>
+  Both halves of that rule needed a column to live in, and neither had one. The obligation now lives
+  on the event type, and the answer on a record-types table **that did not exist** — though the
+  records table already referenced it.
+
+  Without them the rule reads as enforced and is **not evaluable**.
+</Note>
+
+## Ingest retention is also the backfill horizon
+
+<Warning>
+  `ingested_events` retention is not only a storage decision. It is the **backfill horizon for any
+  report fact type declared later** — shortening it shortens what can ever be reconstructed.
+
+  It is recorded as an open question rather than given a default.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="The automation module" icon="bolt" href="/engineering/modules/automation">
+    Where the ingest pipeline and all four guards live.
+  </Card>
+  <Card title="The audit capability" icon="shield-check" href="/engineering/platform/audit-capability">
+    Why the fourth store is written differently from the other three.
+  </Card>
+</CardGroup>

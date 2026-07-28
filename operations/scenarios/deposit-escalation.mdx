@@ -1,0 +1,176 @@
+---
+title: "A deposit nobody can attribute"
+description: "Money arrives, the machine cannot decide whose it is, and two different teams get involved"
+icon: "money-bill-transfer"
+mode: "wide"
+---
+
+This is the scenario that most resembles an ordinary Tuesday: **an automatic decision declines to
+decide.**
+
+Nothing was approved, nothing was flagged, nobody clicked. An external system moved value and told us
+afterwards — and the interesting entity, *who sent it*, is exactly what has not been determined.
+
+## Today, without the platform
+
+<Warning>
+  All of the following is measured from a real seven-service estate, not imagined.
+</Warning>
+
+A deposit arrives through one of **six different ingest paths** — two bank webhooks, two custody
+webhooks, and two chain monitors. Each writes a row, then calls one shared function that tries four
+matching strategies in sequence.
+
+| What happens | Consequence |
+| --- | --- |
+| **On success**, a chat message goes to the channel of the salesperson who owns the counterparty — read from a nullable database column, falling back to a map key when null | Routing is a column value. Nobody can enumerate the destinations without querying production |
+| **On failure**, two messages fire back-to-back to two different channels, **with no shared correlation id** | They describe one state change and cannot be tied together |
+| **Which** channel the second goes to is a ternary on the record's status | Invisible to any search for the channel name |
+| **The reason is not sent.** Four distinct matching strategies can fail; all four produce one identical message | The compliance officer is told a review is needed and not why — though the triggering reason *is* computed and *is* persisted |
+| **The record's primary key is not sent** — a transaction id is included, the row id is not | A recipient cannot navigate from the message to the record without searching |
+| **The rejecting reviewer and their comment** are both persisted and both omitted | A rejection notice names neither who rejected nor why |
+| The status in the message is a **display label**, string-manipulated from another display label | The underlying state value never crosses the boundary at all |
+
+And nobody could answer *"how many deposits are waiting on compliance right now"* without a SQL query
+against production.
+
+## With the platform
+
+<Steps>
+  <Step title="The source system states a fact">
+    `treasury.deposit.received` — with an occurrence id, the time it happened, the deposit as the
+    subject, and the amount as a **decimal string** rather than a float.
+
+    Note the event type. It is **not** `treasury.deposit.unmatched`: the source system states that
+    money arrived, which is what it knows. Whether it can be attributed is this platform's decision,
+    not the publisher's.
+  </Step>
+  <Step title="A workflow opens a case">
+    The matcher finds the workflow for this event type, and its action starts a
+    **`deposit-attribution`** process instance.
+  </Step>
+  <Step title="Step 1 — automatic attribution">
+    The case asks for a **logical capability**, `attribution.match`. It does not name a vendor or an
+    algorithm. Replacing the matching engine later is one configuration row.
+
+    - **Matched** → jump to release.
+    - **Not matched** → publish `treasury.deposit.attribution_failed` and continue.
+  </Step>
+  <Step title="Step 2 — a human name review, in the operations queue">
+    A task appears in `queue:operations` with **which strategy failed and why** on the row.
+
+    - **Matched** → continue to the threshold check.
+    - **Unmatchable** → publish `treasury.deposit.rejected` and end.
+  </Step>
+  <Step title="Step 3 — automatic threshold evaluation">
+    Another logical capability, `threshold.evaluate`.
+
+    - **Within limits** → release.
+    - **Breached** → escalate to a **different team**.
+  </Step>
+  <Step title="Step 3a — a human compliance review, in the compliance queue">
+    A second task, a different queue, a different deadline, a different role.
+
+    - **Cleared** → release.
+    - **Rejected** → publish `treasury.deposit.rejected` and end.
+    - **More information required** → **wait**, possibly for weeks, then re-enter this step.
+  </Step>
+  <Step title="Step 4 — release">
+    Automatic.
+  </Step>
+</Steps>
+
+## Why this is a case and not two chained tasks
+
+That `more_info_required` loop is the answer.
+
+<Note>
+  It is the one place the platform waits on a **customer** rather than on staff. Something has to
+  remember, for possibly weeks, that this deposit is waiting for a document — and survive every
+  deploy in between.
+
+  That is exactly the "does it need to remember where it is between two things days apart?" test, and
+  it is why `process` exists as a separate layer.
+</Note>
+
+## The configuration trap, named so you avoid it
+
+Two teams review the same deposit for different reasons. The obvious way to configure that is wrong,
+and the wrongness only shows up in production.
+
+<Tabs>
+  <Tab title="The wrong way">
+    ```
+    rule A   subject.type = deposit                       → queue:operations
+    rule B   subject.type = deposit, tag = threshold      → queue:compliance
+    ```
+
+    **Both rules match** a deposit that failed attribution *and* breached a threshold. It lands in
+    both queues, and two teams work the same item.
+  </Tab>
+  <Tab title="The right way">
+    ```
+    rule A   domain = compliance · role = reviewer   → team T-COMPLIANCE   priority 10
+    rule B   domain = operations · role = reviewer   → team T-OPERATIONS   priority 20
+    ```
+
+    Rules are **ordered and first match wins**, and the tier is carried on the **task type**, not on
+    the subject.
+  </Tab>
+</Tabs>
+
+<Warning>
+  **Responsibility keys on what kind of work it is, never on what kind of thing it is about.**
+
+  A deposit is not owned by a department. *Reviewing a deposit's name* is.
+</Warning>
+
+## The two queues are not seniority levels
+
+| | Name review | Threshold review |
+| --- | --- | --- |
+| Owned by | Operations | Compliance |
+| Asks | Is this counterparty who we think it is? | Does this amount cross a reporting threshold? |
+| Deadline | Its own | Its own, different |
+| Staffed by | Usually different people | Usually different people |
+
+They are **different work**, not two tiers of one queue. Modelling them as tiers puts work in front
+of people who cannot action it.
+
+## One thread, no duplicate notification
+
+Both escalations carry the same **correlation id**, so the whole story — arrival, failed
+attribution, name review, threshold breach, compliance review, release or rejection — is one
+queryable thread.
+
+And the channel policy differs between them on purpose:
+
+| Escalation | Category | Channels | Mandatory |
+| --- | --- | --- | --- |
+| Attribution failed | `incident` (operations) | in-app, email | — |
+| Threshold breached | `incident` (compliance) | in-app, email | **in-app** |
+| Deposit rejected | `audit` (operations) | in-app, email | — |
+
+<Note>
+  The compliance escalation has a **mandatory channel** and the operations one does not, for a
+  specific reason: a name-review backlog is visible in the queue and self-correcting. A compliance
+  review that nobody sees is not.
+</Note>
+
+## What this proves
+
+<CardGroup cols={2}>
+  <Card title="Machine indecision is a first-class outcome" icon="circle-half-stroke">
+    "The automation could not decide" has a workflow, a queue, and an SLA — not an error branch and a
+    log line.
+  </Card>
+  <Card title="Two tiers, two departments, one thread" icon="link">
+    Different roles with different deadlines, escalating without either tier losing the story or
+    getting told twice.
+  </Card>
+</CardGroup>
+
+<Card title="Next scenario: maker-checker" icon="user-check" href="/operations/scenarios/maker-checker">
+  Approving a payout destination — the smallest high-stakes control, and the one most likely to be
+  quietly wrong.
+</Card>

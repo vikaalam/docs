@@ -1,0 +1,137 @@
+---
+title: "Why this matters to compliance"
+description: "For the compliance team — what evidence survives, and what does not"
+icon: "scale-balanced"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/dashboard.webp"
+  alt="A compliance landing screen — open reviews, SLA breaches, and regulatory filings"
+  noZoom
+/>
+
+This tab is written for compliance, the MLRO, legal, and internal audit. There is no architecture
+here. Where a mechanism genuinely matters to an evidentiary claim, it is explained in plain terms and
+linked once.
+
+## The three claims that are hard to make today
+
+<CardGroup cols={3}>
+  <Card title="&quot;This step was performed&quot;" icon="clipboard-check">
+    **Today:** a manual procedure lives in a runbook or someone's head. There is **no record that a
+    step was skipped.**
+
+    **After:** every step is a task in a state, with an owner, a deadline and a history.
+  </Card>
+  <Card title="&quot;This person decided this&quot;" icon="user-check">
+    **Today:** *"who changed this?"* is answered by reading application logs, if at all. In the
+    audited estate, roughly 4 of 139 operational messages carried the acting person.
+
+    **After:** every change carries an actor, a before, and an after.
+  </Card>
+  <Card title="&quot;We filed this&quot;" icon="file-shield">
+    **Today:** the proof of filing is a screenshot in a shared drive.
+
+    **After:** a reproducible run, a stored artifact, and a **submission receipt**. A run is not done
+    until the receipt returns.
+  </Card>
+</CardGroup>
+
+## The one distinction to internalise first
+
+<Warning>
+  **The audit trail is not the event log.** Four different stores get called "the log", and
+  conflating them is the most likely cause of a wrong answer during a review.
+</Warning>
+
+| Store | Contains | Retained |
+| --- | --- | --- |
+| **Ingest history** | Every event received, verbatim, whatever it produced | Months |
+| **Records** | A curated, typed, redactable projection of selected event data | Per record type — years where the obligation says so |
+| **Report facts** | Facts shaped for a defined report | Per report obligation |
+| **Audit entries** | **Actor-attributed changes to this platform's own state** | Years. Legal hold overrides |
+
+The audit trail answers *"who changed this workflow, approved this case, downloaded this artifact"*.
+An external system's fact is **not** a change to our state and does not belong there.
+
+<Note>
+  This matters for a specific reason: **an obligation measured in years cannot be satisfied by the
+  ingest history**, which is dropped on a months-long schedule. The partition drops on time, the
+  "kept fact" is gone, and **nothing failed**.
+
+  The platform refuses that configuration, and checks it continuously. See
+  [retention and erasure](/compliance/retention-and-erasure).
+</Note>
+
+## What the platform guarantees
+
+<AccordionGroup>
+  <Accordion title="The audit record cannot be partially written" icon="lock">
+    The audit entry is written **inside the same database transaction as the change it describes**. If
+    the audit write fails, **the business change rolls back**.
+
+    An audit trail that is *sometimes* written is equivalent to none. This is the correct behaviour
+    for a regulated operator, and its price — that the audit component can never be moved into a
+    separate service — is accepted explicitly rather than discovered later.
+  </Accordion>
+  <Accordion title="A denied attempt is itself recorded" icon="ban">
+    A refused permission, or a four-eyes violation, produces an audit entry with outcome `rejected` —
+    committed **in its own transaction**, precisely so that the rollback of the refused action does
+    not take the record of the refusal with it.
+
+    Without that, the store built to prove a denial occurred could never retain one.
+  </Accordion>
+  <Accordion title="Append-only is enforced by the database, not by discipline" icon="database">
+    The application's database role holds `INSERT` and `SELECT` on the audit table and **nothing
+    else**. There is no code path that can update or delete an audit entry, because the privilege does
+    not exist.
+  </Accordion>
+  <Accordion title="Tamper-evidence is checkable" icon="fingerprint">
+    An hourly job computes a Merkle root over each closed interval and stores it. Verification is a
+    query anyone with the permission can run.
+
+    A per-row hash chain was rejected because it serialises concurrent writes for a property the
+    hourly seal already provides.
+  </Accordion>
+  <Accordion title="Nothing that needed a person is dropped quietly" icon="eye">
+    An event with no configured reaction, a notification that resolved to nobody, an automated step
+    that exhausted its retries — each becomes a **visible queue item**.
+
+    This is the claim most relevant to a control environment: *silence is never evidence that nothing
+    needed doing.*
+  </Accordion>
+</AccordionGroup>
+
+## What it does not do
+
+Stated up front rather than discovered in an assessment.
+
+- **It does not decide compliance outcomes.** It routes, records, and holds the clock.
+- **It does not own customer or transaction data.** Subjects are opaque references. There is no
+  customer table and no transaction table.
+- **It does not author permissions.** Roles and grants live in the company's central auth service and
+  are enforced here.
+- **It cannot ingest what was never said.** Some occurrences in source systems never become facts at
+  all — **32 are itemised**, each with the change its service needs.
+
+<Card title="The honest limits, in full" icon="triangle-exclamation" href="/compliance/limitations">
+  Everything this platform does not prove, and what would be needed to close each gap.
+</Card>
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="What you gain, concretely" icon="circle-check" href="/compliance/what-you-gain">
+    Before and after, per control question.
+  </Card>
+  <Card title="The audit trail" icon="shield-check" href="/compliance/audit-trail">
+    What is recorded, what a record contains, and who can read it.
+  </Card>
+  <Card title="Reconstructing a decision" icon="timeline" href="/compliance/trace">
+    One correlation id, everything that followed from it, in order.
+  </Card>
+  <Card title="Regulatory reporting" icon="file-invoice" href="/compliance/regulatory-reporting">
+    Reproducible runs, named destinations, and proof of filing.
+  </Card>
+</CardGroup>

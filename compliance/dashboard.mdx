@@ -1,0 +1,114 @@
+---
+title: "The compliance view"
+description: "What a compliance team sees when they open the platform"
+icon: "gauge"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/dashboard.webp"
+  alt="Compliance dashboard — open reviews, SLA breaches, and regulatory filings"
+  noZoom
+/>
+
+## A landing screen, not a module
+
+The dashboard aggregates open reviews, SLA health, and regulatory filings. **Every card on it is
+owned by a real module; the screen itself owns none of them.**
+
+That constraint is deliberate. A landing screen with logic of its own eventually disagrees with the
+thing it summarises, and then there are two answers to one question.
+
+## The four things a compliance team watches
+
+<CardGroup cols={2}>
+  <Card title="Reviews waiting" icon="clipboard-list">
+    How much work is in the compliance queue, and how much of it nobody has claimed.
+  </Card>
+  <Card title="Deadlines at risk" icon="clock">
+    SLA health per task type. A repeated breach on one type is a signal about the deadline or the
+    staffing, not about one person.
+  </Card>
+  <Card title="Filings and their state" icon="file-invoice">
+    Report runs, whether they succeeded, and whether a receipt came back.
+  </Card>
+  <Card title="Anything that reached nobody" icon="user-slash">
+    `no_recipient` deliveries in your domain — a gap in the responsibility rules, which means work
+    that will silently not arrive next time either.
+  </Card>
+</CardGroup>
+
+## The events stream, read-only
+
+<img
+  src="/images/screens/events-readonly.webp"
+  alt="Events, read-only — compliance traces the stream but never configures it"
+  noZoom
+/>
+
+Compliance can see every event the platform received — including the ones that produced nothing —
+grouped by business domain.
+
+<Note>
+  **Compliance traces the stream; it never configures it.** The read-only presentation is a
+  permission boundary made visible, not a UI simplification. Configuring what an event does is a
+  different permission held by a different role.
+</Note>
+
+This screen answers a question that had no answer before: *what did the platform actually learn, and
+when?* Including events that were deliberately kept and deliberately did nothing.
+
+## What each status means for an assessment
+
+| Status | Compliance reading |
+| --- | --- |
+| `dispatched` | Everything configured to happen, happened |
+| `observed` | **Someone decided** this is worth keeping and worth nothing else. A decision, with an actor and a date |
+| `unmapped` | **Nobody has looked at this yet.** A control gap, and a queue item |
+| `suppressed` | Deliberately silenced. The suppression itself is configuration, audited |
+| `partial` | Something ran and something did not — **including a notification that reached nobody** |
+| `dead` | An automated step exhausted its retries |
+| `invalid` | The publisher broke the contract |
+
+<Warning>
+  **`observed` and `unmapped` are the pair that matters most in an assessment.**
+
+  `observed` means a decision was taken. `unmapped` means no decision has been taken yet. They look
+  identical on a chart and mean opposite things.
+
+  Keeping them apart is what lets the `unmapped` queue reach zero — which in turn is what makes "the
+  queue is empty" a meaningful statement rather than a permanently ignored number.
+</Warning>
+
+## Report definitions, read-only
+
+<img
+  src="/images/screens/report-definitions.webp"
+  alt="Report definitions — versioned, with named destinations"
+  noZoom
+/>
+
+Which reports exist, what version each is on, and where each one submits.
+
+<Note>
+  **Destinations are named rows, never free-form URLs.** `regulator-str-filing`, `fintrac-lvctr` —
+  not an endpoint typed into a field.
+
+  This is a hard rule with one deliberate exception: the destinations screen itself, which is a
+  separately-granted global resource. Everywhere else in the product, a free-form URL is prohibited.
+</Note>
+
+A run **pins a definition version**, so re-reading a filing from two years ago tells you which
+version produced it.
+
+## Where a compliance officer goes from here
+
+| To answer | Open |
+| --- | --- |
+| "Who changed this, and when?" | [Audit](/compliance/audit-trail) |
+| "What happened in this case, in order?" | [Trace](/compliance/trace) |
+| "Was this approved by two different people?" | [Four eyes](/compliance/four-eyes) |
+| "Can we prove we filed it?" | [Regulatory reporting](/compliance/regulatory-reporting) |
+| "Can we honour an erasure request?" | [Retention and erasure](/compliance/retention-and-erasure) |
+| "Who can see what?" | [Access control](/compliance/access-control) |
+| "Has anything been tampered with?" | [Integrity and holds](/compliance/integrity-and-holds) |

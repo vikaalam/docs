@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workspace-ops/contracts/event-envelope.schema.json",
+  "title": "workspace-ops event envelope",
+  "description": "ARCHITECTURE.md §7.2, made machine-readable. This is the contract a publisher tests against; §7.2 is the prose it was derived from and remains authoritative. Both ingress doors — Redis Streams and POST /api/v1/automation/events/{code} — accept exactly this shape, and §7.1 is explicit that a behaviour on only one transport is a defect.",
+  "type": "object",
+  "required": [
+    "eventId",
+    "eventType",
+    "specVersion",
+    "occurredAt",
+    "source",
+    "subject",
+    "correlationId"
+  ],
+  "additionalProperties": false,
+
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "REQUIRED ON BOTH DOORS (§7.1). Identifies the OCCURRENCE, never the resource: approve → reject → approve on one record is three events with one resource id. The audited estate had 0 of 139 sends carrying one, so no consumer could tell a redelivery from a real second event. Idempotency keys on automation.event_keys, not on ingested_events (§7.4).",
+      "$comment": "A publisher must pick ONE naming taxonomy before minting this. event-catalog/index.md §5: eleven call sites in the measured service insert two rows per fact under two type values, so a dual-taxonomy publisher mints two ids for one occurrence and every §7.4 guard passes."
+    },
+
+    "eventType": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "description": "<domain>.<entity>.<past-tense-verb>. Past tense is enforcement, not decoration: `customer.account.created` is a fact, `customer.account.notify_compliance` is an instruction — and an instruction in an envelope means the publisher decided something that belongs to workspace-ops. The core ships ZERO business domains; it ships five platform ones (task, process, integration, reporting, directory) because the return path re-enters through the same ingest.",
+      "$comment": "The pattern cannot check tense. A reviewer must; §7.2 gives the test."
+    },
+
+    "specVersion": {
+      "type": "string",
+      "const": "1.0",
+      "description": "The envelope version, not the publisher's."
+    },
+
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "REQUIRED. When the thing HAPPENED, not when it was received. Arrival time is the time the pipeline was healthy; under backlog the two diverge by exactly the interval where ordering matters. Several audited sends computed the real instant one line above and dropped it.",
+      "$comment": "RFC 3339 with an explicit offset. A local timestamp with no zone is a defect an exchange operating across zones cannot absorb (§13.10)."
+    },
+
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The publishing system, e.g. `core-api`. Free text, not validated against a table."
+    },
+
+    "subject": {
+      "type": "object",
+      "required": ["type", "ref"],
+      "additionalProperties": false,
+      "description": "STRUCTURED, always both halves (ADR-29). Routing, the §7.4 cycle guard and the audit trail all key on the pair; buried in `data` it cannot be indexed and the cycle guard silently degrades to type-only.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Must be a registered automation.subject_types.code, or the envelope is `invalid`."
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "description": "OPAQUE (§7.3). Never resolved against a local table — there is no customer table and no transaction table. Only its SHAPE is checked, against subject_types.ref_format."
+        }
+      }
+    },
+
+    "actor": {
+      "type": ["object", "null"],
+      "required": ["type", "ref"],
+      "additionalProperties": false,
+      "description": "Present when a HUMAN acted; null when the system did. Every audited rejection notice omitted both the rejecting reviewer and the reason, though both were persisted one line earlier.",
+      "properties": {
+        "type": { "type": "string", "enum": ["user", "system", "publisher", "process"] },
+        "ref": { "type": "string", "minLength": 1 },
+        "display": { "type": "string" }
+      }
+    },
+
+    "correlationId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Ties one operator click, the event it produced, and every downstream effect into one thread (§12)."
+    },
+
+    "causationId": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "The immediate cause. Null only at the root of a thread."
+    },
+
+    "depth": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "The loop guard (§7.4). Read at ingest and at emission, nowhere else. The guard keys on (eventType, subject.type, subject.ref) — not on the event type alone."
+    },
+
+    "data": {
+      "type": "object",
+      "description": "FACTS, not references. `{type, id}` requires the consumer to hold the producer's database credential and re-read a row that may have changed — a coupling that outlives every refactor. Two independent codebases in the audit converged on exactly that.",
+      "$comment": "MONEY IS A STRING (§13.9, ADR-31). JSON numbers are IEEE-754 doubles and the domain's amounts are decimal(65,8); this is the rule that fails silently. event-catalog/index.md §4 records four production gates where a float already decides whether an event fires at all — re-reading the column as a decimal string fixes the payload and NOT the gate."
+    },
+
+    "severity":   { "not": {}, "description": "FORBIDDEN (§7.2) — a decision, not a fact. Severity is channel_policies' to decide, per category. Rejected as `invalid`, never silently ignored." },
+    "recipients": { "not": {}, "description": "FORBIDDEN (§7.2) — who is told is directory's answer, resolved from responsibility rules at dispatch. A publisher naming recipients has put routing policy back in its own codebase, which is the condition this platform exists to end." },
+    "channel":    { "not": {}, "description": "FORBIDDEN (§7.2) — channel_policies decides, by category × severity." },
+    "template":   { "not": {}, "description": "FORBIDDEN (§7.2) — templates live in the notifier driver and are not edited in this product, in either direction." },
+    "actions":    { "not": {}, "description": "FORBIDDEN (§7.2) — the workflow decides what happens. An envelope carrying actions is an instruction." },
+    "assignee":   { "not": {}, "description": "FORBIDDEN (§7.2) — task assignment is resolved, not asserted." },
+    "priority":   { "not": {}, "description": "FORBIDDEN (§7.2) — a decision. Note workflow priority is an integer owned by configuration, and task priority is an enum owned by the task type; neither is the publisher's." }
+  },
+
+  "$comment": "The seven forbidden fields are declared with `not: {}` rather than left to additionalProperties so a validator names the offending field. §20·18 records that ingested_events had no column for the rejection reason and now carries `rejection jsonb {code, field, detail}` — a publisher moving off hand-rolled sends fails FIRST on these seven, and telling them which one is the whole migration aid."
+}

@@ -1,0 +1,65 @@
+---
+title: "Authentication"
+description: "Verified in-process, keyed on email, and never delegated per request"
+icon: "id-card"
+---
+
+`workspace-ops` issues no passwords. A bearer token from the company IdP is verified **in-process
+against the IdP's JWKS**. No identity service sits on the request path — that coupling would put
+another system's availability underneath every request this platform serves.
+
+<Warning>
+  **Identity is keyed on the `email` claim, not on `sub`.** `sub` is an opaque IdP identifier, while
+  every audit column in this estate stores email. A token whose email claim is absent or unverified
+  is **rejected** — never defaulted to `sub`, which would silently create a second identity for one
+  person and split their audit trail in half.
+</Warning>
+
+## Token lifecycle in the browser
+
+A single-page application stops hiding these, so they are stated rather than inherited.
+
+| Concern | Decision |
+| --- | --- |
+| Auth flow | OIDC Authorization Code + **PKCE**. No client secret in the browser |
+| Access token | **In memory only** |
+| Refresh token | `HttpOnly; Secure; SameSite=Strict` cookie. **Never `localStorage`** — XSS in a tool that can edit egress destinations is a credential-exfiltration primitive |
+| CSRF | A cookie-borne refresh means CSRF applies to the refresh endpoint: strict same-site plus a double-submit token, **on refresh only** |
+| Silent renewal | Refresh on `401` behind a **single-flight guard**, so a burst of parallel table queries does not fire *N* refreshes |
+| Route guards | Mirror the two authorization layers client-side **for navigation only** |
+
+<Warning>
+  **The server remains the only enforcement point. A hidden button is not a permission.**
+</Warning>
+
+## The person directory is a projection
+
+`directory.persons` is a projection of the identity provider, fed by the auth service's scheduled
+sweep. A person deactivated upstream stops receiving work here with **no manual step**.
+
+<Warning>
+  **One projection rule is load-bearing:** the estate's team-membership call **fails open to an empty
+  set**.
+
+  A projection must therefore treat an empty response as a **failure**, never as a membership change.
+  Treating it as data would silently remove everyone from every team, and would surface weeks later as
+  unassigned work.
+</Warning>
+
+<Note>
+  A person carries **two** activity flags: one owned upstream (still in the identity provider) and one
+  owned here (suspended locally). Effective activity is both.
+
+  One column with precedence rules was rejected — it is unreadable, and it loses the distinction
+  between *"suspended by us, still employed"* and *"gone from the company"*, which need different
+  escalation wording.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Authorization" icon="lock" href="/reference/authorization">
+    What happens after a token is verified.
+  </Card>
+  <Card title="Implementing it" icon="code" href="/reference/implementation">
+    The two guards as working code.
+  </Card>
+</CardGroup>

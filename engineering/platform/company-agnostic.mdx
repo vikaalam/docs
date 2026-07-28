@@ -1,0 +1,154 @@
+---
+title: "Staying company-agnostic"
+description: "Three mechanisms, one grep, and where the rule is most likely to erode"
+icon: "globe"
+---
+
+The core must never learn the domain. That is a **product rule**, not a client rule, and it holds
+regardless of who owns the repository.
+
+<Warning>
+  **A core that knows the domain cannot be reused, and cannot be reasoned about without knowing the
+  business.**
+
+  Concrete names belong in seed data and connectors, where they are **visible and enumerable**.
+</Warning>
+
+## Three mechanisms
+
+<Steps>
+  <Step title="Subjects are opaque">
+    No customer table, no transaction table. The platform validates a reference's **shape** against a
+    registered format and **never** its existence.
+  </Step>
+  <Step title="Capabilities are logical, not vendor-named">
+    A process step asks for `identity.verify`, `screening.sanctions`, or `document.fetch`. A binding
+    table maps the logical capability to a provider and a connector.
+
+    **Replacing a vendor is a binding row plus a connector file — no process definition changes.**
+  </Step>
+  <Step title="Every domain concept enters as configuration">
+    Event types, subject types, workflows, task types, responsibility rules, channel policies, report
+    definitions. Seeded per deployment, none compiled in.
+  </Step>
+</Steps>
+
+## The gate
+
+```bash
+# tools/domain-terms.txt holds one term per line: every vendor name and every
+# industry word this deployment uses. Only integration/internal/connectors/ and
+# src/seed/ are allowed to contain them.
+grep -rEwinf tools/domain-terms.txt src/modules \
+  --exclude-dir=connectors \
+  && { echo "domain term leaked into core module code"; exit 1; }
+```
+
+<Warning>
+  **The `-w` flag is load-bearing.** Without word boundaries, a short vendor code matches inside an
+  unrelated identifier — and **the first false positive is the moment someone appends `|| true`**.
+
+  A gate's value depends entirely on it never crying wolf.
+</Warning>
+
+<Note>
+  The gate is **deliberately blunt**: a grep that fails loudly beats a principle everyone agrees with
+  and nobody checks.
+
+  The term list is extended whenever a new vendor or domain word is introduced — **adding the term is
+  part of adding the connector**, not a follow-up ticket.
+</Note>
+
+## Where domain vocabulary is allowed
+
+| Location | Allowed | Why |
+| --- | --- | --- |
+| `integration/internal/connectors/` | ✅ | A connector **is** the vendor-specific part. That is its job |
+| `src/seed/` | ✅ | Seed data is the deployment's own vocabulary by definition — including the **139 registered event types** |
+| Anywhere else under `src/modules/` | ❌ | Fails the gate |
+| Configuration rows in the database | ✅ | Not code |
+| Process definitions | ❌ **for vendors** | They name logical capabilities only |
+
+## What the core does ship
+
+**Zero business domains.** `customer`, `treasury`, `compliance`, `partner` are registered by the
+deploying company.
+
+**Five platform domains, and it has to:**
+
+```
+task · process · integration · reporting · directory
+```
+
+<Note>
+  The return path re-enters through the same ingest as any external fact, and an unregistered event
+  type is a `404`. So those five domains ship with the core and are **seeded at slice 0** — they are
+  the only ones that are.
+
+  They are also the authorization scope for their own event types, so a grant naming `domain:task`
+  names a real domain rather than a placeholder.
+</Note>
+
+## Where the rule erodes
+
+Four places, named so they can be watched.
+
+<AccordionGroup>
+  <Accordion title="common/ learning about a module" icon="triangle-exclamation">
+    **The number-one decay path**, and the one the dependency rule names explicitly in its own comment.
+
+    `common/` is for what is genuinely cross-domain, and **must not know any module exists**.
+  </Accordion>
+  <Accordion title="A condition language that grows" icon="code">
+    Matching conditions are declarative and **intentionally limited**.
+
+    A condition language that grows into a programming language is **a deploy in disguise, without any
+    of a deploy's review** — and it is where domain logic re-enters the core through the front door.
+  </Accordion>
+  <Accordion title="A vendor name reaching a process definition" icon="right-left">
+    Definitions are versioned and long-lived. **A vendor name inside one would outlive the vendor.**
+
+    The indirection table costs one row. That is the whole price.
+  </Accordion>
+  <Accordion title="A capability driver pinning a decision outside its module" icon="plug">
+    This one actually happened.
+
+    The frontend framework was once chosen from the **notifier driver's** component catalogue —
+    letting a deliberately swappable, unverified vendor pin the largest and least reversible choice in
+    the web application.
+
+    It was reversed, and the component it protected turned out never to be mounted by any screen.
+
+    **A capability's driver may never constrain a decision outside the module that owns the
+    capability.** If it does, the boundary has already failed.
+  </Accordion>
+</AccordionGroup>
+
+## Deploy per company, not multi-tenant
+
+<Note>
+  *"Usable in any company"* means a reusable **codebase**, not a shared **instance**.
+</Note>
+
+| Rejected | Consequence of rejecting it |
+| --- | --- |
+| A tenant column on every table with row-level isolation | **No tenant column, and no cross-tenant leak class of bug** |
+
+Adding multi-tenancy later is a real migration, and that is accepted rather than hedged.
+
+<Warning>
+  **Authorization scope is not tenancy**, and the pressure to collapse them will be constant.
+
+  Counterparty scope looks like tenancy from the outside. It is a property of a piece of work within
+  one company's deployment, and it answers a different question. The distinction is written down
+  precisely because it will be argued about.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="The dividing principle" icon="scissors" href="/engineering/dividing-principle">
+    Where this rule comes from.
+  </Card>
+  <Card title="integration" icon="plug" href="/engineering/modules/integration">
+    The one module where vendor names belong.
+  </Card>
+</CardGroup>

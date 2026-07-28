@@ -1,0 +1,265 @@
+---
+title: "Open questions"
+description: "Recorded rather than assumed — and the ones that have since been answered"
+icon: "circle-question"
+mode: "wide"
+---
+
+<Note>
+  **A default that nobody chose is worse than a blank, because it looks decided.**
+
+  This list is numbered and referenced by number elsewhere, so answered items stay in place with their
+  answer attached rather than being deleted.
+</Note>
+
+## Still open
+
+<AccordionGroup>
+  <Accordion title="2 · Personal data in vendor invocation records" icon="id-card">
+    Identity-verification responses contain identity documents.
+
+    **The field-level redaction policy and its retention must be agreed with compliance before slice
+    3, not after.** This is a hard sequencing requirement, not a preference.
+  </Accordion>
+  <Accordion title="3 · Artifact retention and legal hold duration" icon="box-archive">
+    **A regulatory answer, not an engineering one.**
+  </Accordion>
+  <Accordion title="4 · Notifier edition limits" icon="plug">
+    Self-hosted notification platforms often gate team seats and environments in their community
+    edition.
+
+    Whether that is acceptable is a **commercial** decision. It gates the notification design detail,
+    not the architecture — and it is also the reason the frontend framework must never have been
+    chosen from that vendor's component catalogue.
+  </Accordion>
+  <Accordion title="5 · Chat destination during the strangler period" icon="comment">
+    Whether parallel-run messages go to the **same channel, marked**, or to a **shadow channel**
+    changes how the comparison is performed in slice 1.
+  </Accordion>
+  <Accordion title="6 · Ingest-history retention" icon="clock">
+    Not only a storage number. It is the **backfill horizon** for every report fact type declared
+    later — shortening it shortens what can ever be reconstructed.
+
+    Raw envelopes may also hold data that never passed a redaction policy.
+  </Accordion>
+  <Accordion title="7 · A business-day calendar" icon="calendar">
+    SLAs and statutory deadlines are stated in calendar durations, but a filing window is counted in
+    **business days in the regulator's jurisdiction**.
+
+    Nothing in the architecture owns a calendar, and every module that computes a deadline would need
+    the same one.
+  </Accordion>
+  <Accordion title="8 / 10 · Absolute deadlines" icon="hourglass">
+    Timers are **relative durations anchored at step entry**. A statutory window is anchored to an
+    **external date**.
+
+    This needs an instance-level deadline with an **anchor, an offset, and a calendar** — **before
+    slice 4, or filings are timed from the wrong moment.**
+  </Accordion>
+  <Accordion title="13 · Inbox read state is not measurable from here" icon="eye">
+    The in-app inbox belongs to the notifier driver.
+
+    *"How long before anyone looked?"* — **the number that decides queue staffing** — cannot be
+    answered from this platform's data without copying state the notifier owns and that would go
+    stale.
+
+    Three ways out: the notifier exposes it as a queryable fact; a read-receipt event flows back into
+    the stream; or the question permanently belongs to the notifier's own reporting.
+  </Accordion>
+  <Accordion title="14 · No report fact type spans a whole case" icon="chart-line">
+    Two sanctioned projections cover a **single unit** each — a case's outcome and duration, and who
+    completed what and when.
+
+    **What is missing is the cross-module figure:** elapsed time across a case's process steps *and*
+    the task work inside them, which neither projection answers alone.
+
+    <Warning>
+      Whoever is first asked for that has **no sanctioned path** and will write the cross-schema JOIN
+      the boundary rules forbid. **The prohibition and the missing alternative are the same finding.**
+    </Warning>
+  </Accordion>
+  <Accordion title="15 · The calendar is bound to a team, and the deadlines that matter are not a team's" icon="scale-balanced">
+    A calendar on a team is right for an SLA on human work. A statutory filing window is counted in
+    the **regulator's** business days — and a deployment can face **more than one regulator at once**.
+
+    The worked profile shows **four legal entities and a filing schedule pinned to a timezone
+    belonging to none of them.**
+
+    So `process` and `reporting` need to be able to *name* a calendar, and nothing lets them.
+
+    <Note>
+      Related to items 7, 8 and 10, and **not the same as any of them**: those ask what a deadline is
+      anchored *to*; this asks **whose week it is counted in**.
+    </Note>
+  </Accordion>
+  <Accordion title="16 · A provisional reference format is indistinguishable from a verified one" icon="fingerprint">
+    A subject type carries a format that a reference must match, and validation happens at ingest.
+
+    But the *"fire it once, look at the shape, then build the workflow"* loop depends on an unmapped
+    event being **stored** — so an event whose subject type is registered with a **provisional format
+    nobody has verified** looks exactly like one that was checked.
+
+    **A catch-all format and a null one need to be different states, and are not.**
+  </Accordion>
+</AccordionGroup>
+
+## Answered, kept in place
+
+<AccordionGroup>
+  <Accordion title="1 · Source of person identity — answered" icon="circle-check">
+    The identity provider, projected on a **scheduled sweep performed by the estate's auth service**,
+    which becomes the directory's upstream in place of a direct call.
+
+    <Warning>
+      The sweep must treat an **empty response as a failure**, never as a membership change. The
+      estate's current team lookup **fails open to an empty set**, which would silently remove everyone
+      from every team and surface later as unassigned work.
+    </Warning>
+  </Accordion>
+  <Accordion title="9 · Retention for action executions — answered 2026-07-27" icon="circle-check">
+    **It inherits the ingest history's retention exactly, and is partitioned by month to make that
+    sweepable.**
+
+    It cannot be an independent number: an action execution is the **child** of an ingested event, and
+    a trace reads both to answer one question. Retaining either without the other yields **half a
+    trace** — an event whose consequences vanished, or an execution whose cause did.
+
+    Partitioning follows from the retention, not from volume: a matching month partition means one
+    drop removes an event and its executions **together**, and they can never diverge.
+
+    <Warning>
+      **The related trap stands unchanged:** report submissions are retained for years and point at a
+      table retained for months. **The stored receipt, not the pointer, is the evidence.**
+    </Warning>
+  </Accordion>
+  <Accordion title="11 · Four eyes could not exclude the maker — answered 2026-07-28" icon="circle-check">
+    **An explicit `excludeTriggerActor` flag.** The triggering event's actor is added to **the same
+    exclusion set** the step codes populate — one set, one mechanism, and the same failure mode: an
+    exclusion that empties the queue **escalates, never a silent self-approval**.
+
+    It **defaults to off**, so no published definition changes meaning until someone edits it.
+
+    A boolean is admissible here for the one reason a bare "needs four eyes" boolean is rejected
+    elsewhere: there is exactly **one** trigger actor per instance, so it says nothing ambiguous. The
+    two alternatives — naming the trigger in the exclusion list, or a seed-context path — are recorded
+    with their costs.
+
+    <Note>
+      **This was the only item on the list that was a control that was *off*, rather than a number or a
+      name that was missing.** The others cost correctness later; this one was live.
+    </Note>
+  </Accordion>
+  <Accordion title="12 · A rendered link passes none of the egress controls — ownership and storage answered" icon="circle-check">
+    The outbound-URL rules stop **our server** fetching a hostile address. A link rendered into a
+    reviewer's task form is **never fetched by us**, so none of them apply — while being **more likely
+    to be clicked than any URL in the system**.
+
+    **A different victim, not a weaker version of the same problem:** the target is a compliance
+    officer's browser and their trust in our interface.
+
+    **Owner: `integration`** — nothing else can hold it. The check compares a host against a
+    destinations row; a module owns its own tables, so no other module may read one, and no other
+    module may even import the client it would need.
+
+    **Where it runs: ingest.** A link whose host fails verification makes the event `invalid` — a
+    disposition only ingest can assign. The verdict travels with the dispatch payload and is **never
+    re-derived at render time**, because the task form and the inbox entry are two renderings of one
+    payload and a second derivation could disagree with the first.
+
+    **Storage, answered 2026-07-27:** a verified-links table in `integration`, written during ingest
+    validation by the same call that produces the verdict.
+
+    <Note>
+      **What the table buys is the re-check.** A link verified at ingest is a verdict about a
+      destination *as it was then*. When a destination is deleted or its host changes, those rows are
+      the query that finds every already-rendered link the change invalidates — impossible while the
+      verdict existed only inside a payload.
+    </Note>
+  </Accordion>
+  <Accordion title="17 · Nothing marked a task type as an approval — answered 2026-07-27" icon="circle-check">
+    **An `is_approval` flag on the task type, seeded per deployment.**
+
+    An approval whose exclusion leaves **nobody eligible** is a compliance gap; an ordinary unassigned
+    task is a delayed one. **They share a backend condition and must not share a rendering.**
+
+    It is a `task` column and not a derivation, because the only other candidate — reading the process
+    step's four-eyes configuration — is exactly the cross-module read the boundary rules forbid.
+    **`task` must stay usable for work no process created**, so it cannot learn what a process step
+    knows.
+
+    This is **the same control as item 11 seen from the other end**: 11 asks who may be excluded; 17
+    asks what happens when the exclusion empties the queue.
+  </Accordion>
+  <Accordion title="18 · An invalid event stored the envelope and not the reason — answered 2026-07-27" icon="circle-check">
+    **A rejection object on the ingest row** — a code, a **field**, and a detail — written only when the
+    status is `invalid`.
+
+    Structured and not free text because rejection happens on a **named field**, and *"which field"* is
+    the whole value of the record; a sentence would have to be parsed back to be useful.
+
+    <Warning>
+      **This made the two doors symmetric, which is the point.** The HTTP door already returned the
+      reason in its response; the stream door had nowhere to put it, so the reason reached nobody.
+
+      That made it a defect by the contract's own test — *a behaviour that exists on only one transport
+      is a defect* — and it disabled the one migration aid the whole project argues for: a team moving
+      off hand-rolled sends fails first on the **seven forbidden envelope fields**, and the platform
+      could not tell them which.
+    </Warning>
+  </Accordion>
+  <Accordion title="19 · A responsibility rule could not be named — answered 2026-07-27" icon="circle-check">
+    **A unique code on the rule**, returned alongside the id.
+
+    The resolution result must carry a rule reference, because *"the system chose this person"* is not
+    an acceptable answer in an incident review — but what came back was a UUID.
+
+    Every surface that must show *why this person* was therefore showing an identifier **nobody can say
+    out loud**, and the predicate had to be reassembled to make the answer legible.
+
+    The gap was small and it landed on **the one question the directory module exists to answer.**
+  </Accordion>
+</AccordionGroup>
+
+## Two concentration risks, recorded rather than solved
+
+<Warning>
+  **The outbox pump has no priority lane** — a slow provider's retries share a queue with an escalation
+  notification.
+
+  **Batch task creation fires a thundering herd of SLA timers** at the same instant.
+
+  Both need a decision **before slice 2 carries real volume.**
+</Warning>
+
+## One thing that is not verified
+
+<Warning>
+  **The audit transaction wiring.** Enlistment behaviour when an HTTP interceptor and an ORM subscriber
+  share one entity manager **differs between transaction libraries**.
+
+  The concept is sound. **The wiring must be proven with a spike before it is relied on** — and the
+  transaction-context library becomes load-bearing platform infrastructure as a result.
+</Warning>
+
+## Where these come from
+
+<Note>
+  **Every use-case walkthrough is required to end with what it could not settle**, and those gaps
+  become findings rather than being filled with a plausible mechanism.
+
+  Roughly **thirty findings** arrived that way, **three of them structural**. Three of the items above
+  came specifically from **building screens against the documents and hitting a place where the schema
+  could not answer** — each one a **missing column**, which is why none could be closed by a screen
+  deciding something.
+
+  **Recording the gap is the discipline. Inventing the mechanism is the expensive mistake.**
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Decision records" icon="gavel" href="/engineering/decisions">
+    What has been decided, and what each decision rejected.
+  </Card>
+  <Card title="Honest limits" icon="triangle-exclamation" href="/compliance/limitations">
+    The same material for a compliance reader.
+  </Card>
+</CardGroup>

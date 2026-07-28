@@ -1,0 +1,163 @@
+---
+title: "Who can see what"
+description: "Three dimensions of permission, and where the policy is authored"
+icon: "lock"
+---
+
+## The shape of a permission
+
+Access is checked in **two sequential steps**, on every request.
+
+<Steps>
+  <Step title="Can this person enter this module at all?">
+    Derived from the **route**, not from a decorator someone might forget to add. A decorator can be
+    omitted; a route prefix cannot.
+  </Step>
+  <Step title="May they do this specific thing?">
+    A three-part permission: **resource · action · scope**.
+  </Step>
+</Steps>
+
+## Scope is the part that matters operationally
+
+The first two parts are conventional. The third is the one that decides whether a control is real.
+
+<Note>
+  A compliance reviewer may read tasks **within `queue:compliance`** and not within
+  `queue:treasury`. Same resource, same action, different scope.
+</Note>
+
+Real operational work is scoped **two ways at once**, and both are needed:
+
+| Dimension | Example | Why |
+| --- | --- | --- |
+| **Queue** | `queue:compliance` | An operations reviewer and a compliance reviewer work the same case at different stages, under different permissions |
+| **Counterparty** | `partner:4711` | Work about one business partner must not be visible to the team serving another |
+| **Entity** | `entity:sg` | Where a group operates through separate legal entities |
+
+<Warning>
+  **Scope is not tenancy, and the pressure to collapse them will be constant.**
+
+  Counterparty scope *looks* like tenancy from the outside. It is not. This platform deploys **per
+  company**, with no tenant column anywhere; scope is a property of a piece of work within one
+  company's deployment, and it answers a different question.
+
+  The distinction is written down precisely because it will be argued about.
+</Warning>
+
+## Scope is fixed when the work is created
+
+A piece of work is labelled once, at creation, from its subject and its type. **It is never
+re-derived.**
+
+<Note>
+  **Why:** if scope were computed at read time, changing a responsibility rule tomorrow would
+  silently alter who can see work from last year.
+
+  A rule change should change *future routing*, not *historical visibility*.
+</Note>
+
+## Two readings that look like bugs
+
+<AccordionGroup>
+  <Accordion title="An empty scope means visible, not hidden" icon="eye">
+    A piece of work with **no** scope labels is **unscoped and visible** to anyone holding the
+    resource permission.
+
+    The opposite reading — "empty means nothing, so show nobody" — hides every unscoped row from
+    everyone while looking exactly like a permissions bug. The safe default is stated explicitly for
+    that reason.
+  </Accordion>
+  <Accordion title="A misconfigured scope selector fails silently, and that is a queue item" icon="triangle-exclamation">
+    If the configuration that derives scope names a path no publisher actually sends, it derives
+    **nothing** — and nothing looks exactly like "unscoped", which means visible to everyone holding
+    the permission.
+
+    No error, no failed row, no red marker anywhere. It is a configuration defect whose only possible
+    surface is a queue, and it is grouped with the other silent obligations for that reason.
+  </Accordion>
+</AccordionGroup>
+
+## Three resources are separately granted
+
+Because holding them is equivalent to holding production credentials.
+
+<CardGroup cols={3}>
+  <Card title="Destinations" icon="location-dot">
+    Whoever edits these decides **where data goes**.
+  </Card>
+  <Card title="Provider credentials" icon="key">
+    Whoever edits these decides **with what secret**.
+  </Card>
+  <Card title="Publishers" icon="tower-broadcast">
+    Whoever edits these decides **who may inject events**.
+  </Card>
+</CardGroup>
+
+These carry a distinct visual treatment throughout the interface, so that "this is a global resource"
+is never something you have to remember.
+
+## Where the policy comes from
+
+<Warning>
+  **This platform enforces permissions. It never authors them.**
+
+  There is no role editor and no grant screen, and their absence is correct rather than missing.
+</Warning>
+
+| Owned by the company's auth service | Owned here |
+| --- | --- |
+| The resource and action vocabulary | Both checks, evaluated in-process |
+| Which role holds which permission | **Scope evaluation** — the labels live on the work itself, which no external service can read |
+| Which person holds which role | The route-derived module check |
+| Grant audit, access review, expiry | — |
+
+<Note>
+  **Why the policy is not authored here:** the estate runs seven distinct inbound authentication
+  mechanisms, and no permission is portable between them. One person's authority is re-declared in
+  every service, and a revocation is *N* manual edits nobody can enumerate.
+
+  Adding an eighth would have made that worse. Instead the policy is authored in one place, audited
+  in one place, and distributed to the places that enforce it.
+</Note>
+
+## Two consequences, accepted deliberately
+
+| Consequence | Detail |
+| --- | --- |
+| **Revocation is eventually consistent** | Bounded to a few seconds. For the three global resources above, that window is the residual risk, and the control for it is a short-lived token — not a faster policy channel |
+| **The platform refuses to start without a policy** | It must keep running if the policy service becomes unreachable *after* boot, serving its last known snapshot and alerting. It must **refuse to start** if no snapshot is available *at* boot — a process that starts with no policy denies every request, which is an outage wearing the costume of a bug |
+
+## Authentication
+
+Identity comes from the company's identity provider. **This platform issues no passwords.**
+
+The person directory is a **projection** of that identity provider — which is why someone deactivated
+upstream stops receiving work here with no manual step from anyone.
+
+<Warning>
+  **One projection rule is load-bearing:** the upstream team-membership call in the current estate
+  **fails open to an empty set**.
+
+  A projection must therefore treat an empty response as a **failure**, never as a membership change.
+  Treating it as data would silently remove everyone from every team, and would surface weeks later as
+  unassigned work.
+</Warning>
+
+<Note>
+  A person carries **two** activity flags: one owned upstream (are they still in the identity
+  provider?) and one owned here (have we suspended them locally?). Effective activity is both.
+
+  One column with precedence rules was rejected — it is unreadable, and it loses the distinction
+  between *"suspended by us, still employed"* and *"gone from the company"*, which need different
+  escalation wording.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Four eyes" icon="user-check" href="/compliance/four-eyes">
+    The control that permissions alone cannot express.
+  </Card>
+  <Card title="Audit trail" icon="shield-check" href="/compliance/audit-trail">
+    Where a denied permission is recorded.
+  </Card>
+</CardGroup>

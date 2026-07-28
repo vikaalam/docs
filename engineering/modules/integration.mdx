@@ -1,0 +1,293 @@
+---
+title: "integration"
+description: "The only door out — logical capabilities, credentials, and every call recorded"
+icon: "plug"
+mode: "wide"
+---
+
+> **The only door out.** Logical capabilities bound to providers, credentials that never leave this
+> module, and every outbound call recorded. Callers ask for `identity.verify`; **they never learn
+> which vendor answered.**
+
+| | |
+| --- | --- |
+| Schema | `integration` |
+| Layer | Egress / ingress adapter |
+| Depends on | The crypto, lock, cache and event-stream capabilities |
+| Depended on by | `automation` (`call`), `process` (automatic steps), `reporting` (submission) |
+| Slice | **3 — Deliberation** |
+| Extraction trigger | A connector needs a runtime this process cannot host |
+
+## Why it is its own module
+
+Three properties that do not fit inside `automation`:
+
+<Steps>
+  <Step title="Connectors have state">
+    An identity check is submitted; the vendor answers minutes later on a callback. That is a
+    **pending invocation with a timeout**, not a request/response.
+  </Step>
+  <Step title="Connectors hold secrets">
+    Per-provider credentials, signing keys, IP allowlists.
+  </Step>
+  <Step title="Connectors are the attack surface">
+    Every SSRF concern, every redaction rule, every rate limit, and every circuit breaker lives here —
+    **in one place that can be reviewed once, rather than in five places that are each reviewed
+    never.**
+  </Step>
+</Steps>
+
+<Note>
+  An earlier design put egress inside `automation`. That was correct while the only outbound calls
+  were fire-and-forget webhooks. It **stops** being correct the moment a call has a callback, a
+  credential, and a compliance-relevant response body.
+</Note>
+
+## The consequence: `automation` holds no secrets at all
+
+<Warning>
+  One place holds credentials and the SSRF guard. **Scattered outbound calls mean a scattered SSRF
+  guard — and what is scattered is never reviewed.**
+</Warning>
+
+This is enforced by two gates, because a module graph alone cannot see it:
+
+| Evasion | Caught by |
+| --- | --- |
+| An npm HTTP client | The dependency rule |
+| `import https from 'https'` | The same rule, **only because it filters core modules too** |
+| A bare `fetch` — a global since Node 18, so no import exists | A separate lint rule on restricted globals |
+
+All three have fixtures the gate is expected to reject. **A gate tested only against one client has
+never been tested.**
+
+## Logical capabilities
+
+A caller asks for `identity.verify`, `screening.sanctions`, or `document.fetch`. A binding table maps
+that to a provider and a connector.
+
+<Note>
+  **Replacing a vendor is a binding row plus a connector file, and no process definition changes.**
+
+  That matters because process definitions are versioned and long-lived — a vendor name inside one
+  would outlive the vendor.
+</Note>
+
+## Destinations are named rows
+
+<img
+  src="/images/screens/destinations.webp"
+  alt="Destinations — named rows, their resolution state, and their references"
+  noZoom
+/>
+
+<Warning>
+  **A free-form URL in a UI-editable field is prohibited everywhere in the product.** The destinations
+  screen is the single deliberate exception the rule was written around — and it is a **separately
+  granted global resource**, because whoever edits it decides where data goes.
+</Warning>
+
+| Property | Detail |
+| --- | --- |
+| **Enumerable** | *"Where does our data go?"* is a table read, not a grep of production configuration |
+| **Guarded** | Allowlist, private-CIDR block, redirects **not** followed, mandatory per-provider timeout |
+| **Auditable** | Every change carries an actor and a before/after |
+| **Unreferenced is neutral** | A destination nothing references renders neutral, never as a warning. An unused destination is not a problem; an unknown one is |
+
+<Note>
+  The resolution line on the screen is **a check, not a promise** — egress resolves again at call
+  time.
+</Note>
+
+## Every call is recorded
+
+<img
+  src="/images/screens/invocations.webp"
+  alt="Invocations — every outbound call the platform has made"
+  noZoom
+/>
+
+Because this is the only outbound door, **this list is complete by construction**.
+
+<Note>
+  **An invocation has no signal path.** That bar belongs to an ingested event, and an invocation is
+  not one. Borrowing it would imply an ingest that never happened.
+</Note>
+
+## Callbacks — the inbound companion
+
+<img
+  src="/images/screens/callback-log.webp"
+  alt="Callback log — inbound provider returns, and their signature verification"
+  noZoom
+/>
+
+A callback belongs to an invocation, and the two screens agree.
+
+| Rule | Reason |
+| --- | --- |
+| Inbound callbacks **must be signature-verified** | The audit found vendor callbacks arriving **unauthenticated** in the existing estate |
+| An unverifiable callback is answered `401` and **never emits** | It must not become a fact |
+| **This is the one door that stores an unauthenticated body** | Which is exactly why there is **no reprocess control** on this screen |
+
+<Note>
+  Everywhere else, an unauthenticated body is not stored at all — a rejected publisher request is a
+  metric, never a row, because *an unauthenticated body is not evidence*. The callback log is the
+  exception, and it earns the exception by needing the body to diagnose a signature mismatch.
+</Note>
+
+## Timeouts and failure
+
+| Condition | Handling |
+| --- | --- |
+| Provider returns 5xx or times out | Per-invocation retry with backoff. Past the budget the invocation is `dead` and the process step `failed` |
+| Provider is slow | **Mandatory per-provider timeout** — default 5 s, ceiling 15 s. A timeout counts as a failed attempt |
+| Callback never arrives | The step timer fires → escalation → hard deadline → `expired` |
+| Destination points at the internal network | Allowlist, private-CIDR block, no redirect following, separate global permission |
+
+## Principal tables
+
+Generated from `migrations/integration/001-init.sql` — never drawn by hand.
+
+```mermaid
+erDiagram
+    providers {
+        uuid id PK
+        varchar code
+        varchar name
+        varchar connector
+        varchar base_url
+        int timeout_ms
+        jsonb rate_limit
+        jsonb retry_policy
+        more 5_further_columns
+    }
+    provider_credentials {
+        uuid id PK
+        uuid provider_id FK
+        varchar kind
+        bytea ciphertext
+        int key_version
+        timestamptz rotated_at
+        timestamptz expires_at
+        timestamptz created_at
+        more 1_further_columns
+    }
+    capability_bindings {
+        uuid id PK
+        varchar capability
+        uuid provider_id FK
+        int priority
+        jsonb input_mapping
+        jsonb output_mapping
+        boolean active
+        timestamptz created_at
+        more 1_further_columns
+    }
+    destinations {
+        uuid id PK
+        varchar code
+        varchar name
+        varchar base_url
+        text[] path_allowlist
+        uuid auth_credential_id FK
+        int timeout_ms
+        jsonb retry_policy
+        more 3_further_columns
+    }
+    invocations {
+        uuid id
+        varchar capability
+        varchar destination_code
+        uuid provider_id
+        varchar mode
+        varchar idempotency_key
+        varchar subject_type
+        varchar subject_ref
+        more 13_further_columns
+    }
+    invocation_keys {
+        varchar idempotency_key PK
+        uuid invocation_id
+        timestamptz requested_at
+        timestamptz created_at
+    }
+    callbacks {
+        uuid id PK
+        uuid provider_id FK
+        uuid invocation_id
+        boolean signature_valid
+        jsonb raw_headers
+        jsonb body
+        timestamptz received_at
+        timestamptz processed_at
+        more 3_further_columns
+    }
+    verified_links {
+        uuid id PK
+        uuid event_id
+        varchar url_host
+        uuid destination_id FK
+        varchar verdict
+        uuid correlation_id
+        timestamptz created_at
+    }
+    outbox {
+        bigint id PK
+        uuid aggregate_id
+        varchar target
+        varchar operation
+        jsonb payload
+        varchar idempotency_key
+        uuid correlation_id
+        uuid causation_id
+        more 8_further_columns
+    }
+    providers ||--o{ provider_credentials : "provider_id"
+    providers ||--o{ capability_bindings : "provider_id"
+    provider_credentials ||--o{ destinations : "auth_credential_id"
+    providers ||--o{ callbacks : "provider_id"
+    destinations ||--o{ verified_links : "destination_id"
+```
+
+<Note>
+  **This table is partitioned:** `invocations`.
+
+  A partitioned table **cannot carry a global unique constraint**, which is why `invocation_keys` exists beside it, unpartitioned. An ER diagram cannot express that, so it is stated here.
+</Note>
+
+<Warning>
+  **No relationship line leaves this schema, and that is the boundary rule rather than an omission.** The 5 lines above are real foreign keys inside `integration`.
+
+  Bare cross-schema references — drawn nowhere, because the database does not enforce them: `subject_key_id`, plus the artifact and destination references its invocations carry.
+</Warning>
+
+<Note>
+  `invocation_keys` exists because `invocations` is partitioned. This module had **declared
+  partitioning and a unique idempotency key at once** — a migration that would not have run — and it
+  was found by applying the partitioning rule generally rather than treating the first fix as a
+  one-off.
+</Note>
+
+## Retention and an open question
+
+Invocations are retained for a **short** period, deliberately shorter than the audit record.
+
+<Warning>
+  **Open, and blocking:** identity-verification responses contain identity documents. **The
+  field-level redaction policy and its retention must be agreed with compliance before this module
+  ships**, not after.
+</Warning>
+
+There is also a retention interlock worth stating: a **submission record retained for years** must
+not depend on an **invocation retained for months**. The **stored receipt, not the pointer, is the
+evidence.**
+
+<CardGroup cols={2}>
+  <Card title="reporting" icon="file-invoice" href="/engineering/modules/reporting">
+    The module whose output leaves through this door.
+  </Card>
+  <Card title="Failure handling" icon="triangle-exclamation" href="/engineering/platform/failure-handling">
+    Every failure mode, symptom, and handling.
+  </Card>
+</CardGroup>

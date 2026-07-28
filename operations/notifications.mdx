@@ -1,0 +1,170 @@
+---
+title: "Notifications"
+description: "Who was told, on which channel, and what happened when nobody was"
+icon: "bell"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/ops-notifications.webp"
+  alt="Ops · Notifications — outcomes only, never settings"
+  noZoom
+/>
+
+## The delivery log
+
+Every notification the platform sends is a row: the recipient, the channel, the outcome, and a link
+back to the event that caused it.
+
+That sentence is the whole change. In the starting condition, *"did anyone get told about this?"* was
+unanswerable without a full-text search of a chat channel — and where a message was sent to a channel
+that did not exist, the chat API answered `ok:false` **inside an HTTP 200**, the error was swallowed,
+and the message disappeared with no trace and no counter.
+
+## The record stops at the hand-off
+
+<Warning>
+  **There is no `delivered` status, and there never will be.**
+
+  The outcomes are `pending` · `handed_off` · `failed` · `dead` · `suppressed`. **The notifier owns
+  the last mile**, so this platform records that a message was handed over — not that it arrived.
+</Warning>
+
+Three things follow, all absent on purpose:
+
+| Not here | Why |
+| --- | --- |
+| **Read state** | Belongs to the notifier's inbox, not to this product |
+| **A seen-by column** | Same |
+| **Time-to-open** | Same — and recorded as an open question, because it is the number that would decide queue staffing |
+
+<Note>
+  This screen shows **outcomes and never settings**. Channel policy — which category goes to which
+  channel at which severity — is a configuration surface owned by engineering.
+</Note>
+
+## Outcomes
+
+| Outcome | Means | Colour |
+| --- | --- | --- |
+| `handed_off` | Given to the notifier successfully. **Not** "delivered" | Green |
+| `pending` | Not handed over yet | Neutral |
+| `no_recipient` | **The rules resolved to nobody.** It went nowhere | **Amber** |
+| `suppressed` | Policy silenced it deliberately | Grey |
+| `failed` | The notifier rejected it | Red |
+| `dead` | Retries exhausted | Red |
+
+In the current sample set: **four handed off, two dead, one pending, one `no_recipient`** — and
+`failed` and `suppressed` never occur at all, which the screen's footer states rather than leaving
+you to infer.
+
+<Warning>
+  **`no_recipient` is amber on purpose.** The action *completed* and reached *nobody*.
+
+  Red would read as a failed send and send you looking for an outage. Green would be a lie. Amber
+  says the thing you need to know: it worked, and it went nowhere.
+</Warning>
+
+## What `no_recipient` actually means
+
+Almost always: **a hole in the responsibility rules.** Nobody is configured as responsible for that
+combination of thing and situation.
+
+The delivery row names the rule that was evaluated, so you know which rule is missing rather than
+having to guess.
+
+<Note>
+  A `no_recipient` delivery makes its **event** `partial`, not `dispatched`. The two screens agree by
+  construction, so an alert nobody received can never show as green in the event history.
+</Note>
+
+## Opening one delivery
+
+<img
+  src="/images/screens/delivery-detail.webp"
+  alt="Delivery detail — recipients, channels, severity, and the rule that was evaluated"
+  noZoom
+/>
+
+The detail view shows the whole decision, not just the outcome:
+
+| Region | Answers |
+| --- | --- |
+| **Recipients** | Who was resolved — and, for `no_recipient`, that the count was zero |
+| **Rule evaluated** | Which responsibility rule was consulted |
+| **Severity** | How serious this was considered |
+| **Channels** | Which channels the policy required, and which were mandatory |
+| **Subject** | What it was about |
+
+<Note>
+  **Recipients are counts, never names.** There is no person directory in the sample data, and a count
+  is the honest rendering of *how many* when *who* has no source.
+</Note>
+
+<Note>
+  **A critical delivery is marked with a border, never a pill.** Severity is a rank, and the row's
+  left edge carries it. Everything else on the row stays quiet — one strong signal per row is the
+  rule the whole interface follows.
+</Note>
+
+## Why you cannot see the message text here
+
+The platform sends **data, not prose**.
+
+One payload — the facts — serves every channel and every language. The actual wording lives in the
+notification driver's templates, outside this platform.
+
+<Tip>
+  This is what fixes the *"the payload is a rendered sentence"* finding. In the audited estate,
+  roughly a third of send sites welded amounts, names and `null → '-'` into a display string at the
+  call site — and by the time anything reached the wire, **100% were prose**, because one shared chat
+  layer folded every body into a single text field.
+
+  Once that happens the original values are unrecoverable, so nothing downstream can filter, group,
+  translate, or re-render them.
+</Tip>
+
+## Channel policy
+
+Which channels a notification uses is **configuration**, not code. The policy is a grid: category by
+severity.
+
+| Concept | Means |
+| --- | --- |
+| **Category** | What kind of notification this is — an incident, an assignment, an approval, an audit notice |
+| **Severity** | How serious. The column axis of the policy grid, and never rendered as a pill |
+| **Mandatory channel** | A channel a person cannot turn off for this category |
+| **Quiet hours** | When non-urgent notifications are held |
+| **Digest window** | How long similar notifications are batched before sending |
+
+<img
+  src="/images/screens/channel-policies.webp"
+  alt="Channel policies — category by severity, mandatory channels, quiet hours, digest windows"
+  noZoom
+/>
+
+## Notifications are not the work
+
+This is the single most important thing to internalise coming from a chat-driven process.
+
+<Warning>
+  **A notification tells you something exists. It is not the thing.**
+
+  Your work lives in **My tasks**. If a notification is missed, deleted, or arrives while you are on
+  leave, the task is still there with its deadline still running. Nothing depends on you having read
+  a message.
+</Warning>
+
+In the starting condition, the opposite was true: **the chat tool held workflow state.** In one
+domain, 14 of 21 "notifications" were emoji reactions on an earlier message, used to mark items
+finished — with the target found by re-reading the channel and string-matching the message text.
+Rename a title, edit the formatter, or push 100 messages into the channel, and it silently breaks.
+
+<CardGroup cols={2}>
+  <Card title="Attention" icon="triangle-exclamation" href="/operations/attention">
+    Where `no_recipient` shows up for someone to fix.
+  </Card>
+  <Card title="Scenario: nothing happened" icon="ghost" href="/operations/scenarios/nothing-happened">
+    What it looks like when an event arrives and nobody is told — and how you find out.
+  </Card>
+</CardGroup>

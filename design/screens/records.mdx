@@ -1,0 +1,191 @@
+---
+title: "Gallery · Records"
+description: "Audit, trace, deliveries, invocations, report runs and erasure"
+icon: "box-archive"
+mode: "wide"
+---
+
+Everything that has already happened. Owned by `audit`, `notification`, `integration` and `reporting`.
+
+## Audit
+
+<img src="/images/screens/audit.webp" alt="Audit — the immutable activity record" noZoom />
+
+`audit` — *"query and export of the immutable activity record — read-only."* Writing happens through
+a platform capability, **inside the caller's transaction**.
+
+## Trace
+
+<img src="/images/screens/trace.webp" alt="Trace — everything under one correlation id, in order" noZoom />
+
+The full-screen form of the timeline component. Answers *"what happened under this correlation id, in
+order."*
+
+<Note>
+  **The gutter has exactly two store labels.** Giving the audit module a read of the ingest history
+  would hand it a cross-schema dependency where the platform sanctions exactly one.
+
+  **The module chips count state changes, not coverage** — a module consulted without changing state
+  correctly produces no row.
+
+  Rows run compact rather than at the standard height, because a trace is **read whole** rather than
+  scanned.
+</Note>
+
+## Resource history
+
+<img src="/images/screens/resource-history.webp" alt="Resource history — every change to one configuration object" noZoom />
+
+The full-screen form of the history section every configuration detail panel embeds.
+
+<Warning>
+  **A save counter is not an audit trail**, and the screen says so where the two appear together: a
+  version number counts saves that **committed**; an audit trail counts **attempts**, including refused
+  ones.
+</Warning>
+
+## Audit export
+
+<img src="/images/screens/audit-export.webp" alt="Audit export — scope, columns, and an inline confirmation" noZoom />
+
+The consequential-action pattern with the confirmation **inline** — no second dialogue and no
+type-to-confirm, because an export is a read, and a dialogue stacked on a body that is already the
+confirmation **trains the dialogue away**.
+
+<Note>
+  **Columns are part of the form**, because widening an export quietly is exactly the failure this
+  prevents.
+
+  The entry count renders as **absent**: there is no source for it, and an invented blast radius is
+  worse here than anywhere else, because the pattern's whole first rule is that a blast radius must be
+  **measured**.
+
+  There is **no reason field** — an open question, recorded rather than filled in.
+</Note>
+
+## Integrity
+
+<img src="/images/screens/integrity.webp" alt="Integrity — the claim card above the seal table" noZoom />
+
+A verification surface whose **substance is a sentence rather than a table**: what a passing check
+proves and what it leaves open.
+
+<Note>
+  **Never-verified renders neutral** — a check that has not run is not a failure.
+
+  **No green and no red appear anywhere on this screen**, because nothing on it has a result yet, and
+  nothing without a result earns a status hue.
+
+  There is **no repair action** — a tamper-evidence surface that offers to fix a discrepancy is a
+  surface that can be used to hide one.
+</Note>
+
+## Legal holds
+
+<img src="/images/screens/legal-holds.webp" alt="Legal holds — what is held, and since when" noZoom />
+
+Rendered together with erasure, because the two interact: **a hold refuses key destruction, and the
+refusal is itself audited.**
+
+<Note>
+  **The absence of a release date *is* the datum** — it is what "active" means.
+
+  Both hold states render **neutral**. Nothing here is painted green, amber or accent for a hold being
+  in force: a hold is a fact, not an alarm.
+</Note>
+
+<Warning>
+  **One finding rendered on the canvas rather than designed around:** the erasure interlock queries
+  holds **by subject**, and a hold scoped by correlation id names no subject — so the one hold in the
+  worked corpus **would not be found by it.**
+</Warning>
+
+## Erasure
+
+<img src="/images/screens/erasure.webp" alt="Erasure — crypto-shredding, and the refusals" noZoom />
+
+Crypto-shredding: **the audit row outlives the data it protected.** Only the key material is
+destroyed, so history stays countable while personal data is gone.
+
+A legal hold **refuses** erasure, and the refusal is recorded.
+
+## Deliveries
+
+<img src="/images/screens/deliveries.webp" alt="Deliveries — every send, its recipient, its channel, its outcome" noZoom />
+
+`notification` — the delivery log. **A `no_recipient` is never a silent success**, and it makes its
+event `partial` rather than green.
+
+## Delivery detail
+
+<img src="/images/screens/delivery-detail.webp" alt="Delivery detail — recipients, the rule evaluated, severity, channels" noZoom />
+
+One delivery opened. The one drawn is the **`no_recipient`** case — zero recipients, a named
+responsibility rule, critical severity, and mandatory channels.
+
+<Note>
+  It is the only outcome that reaches the rule making the calling event `partial`, and the only
+  critical notification in the sample set — so it gets severity's full treatment: **a 2px left border
+  and never a pill**, plus the subject reference at heavier weight.
+
+  **`no_recipient` is warn, not error.** The action completed and reached nobody; red would read as a
+  failed send.
+</Note>
+
+## Invocations
+
+<img src="/images/screens/invocations.webp" alt="Invocations — every outbound call the platform has made" noZoom />
+
+`integration` — every outbound call. Because it is the only outbound door, **this list is complete by
+construction.**
+
+<Note>
+  **An invocation has no signal path** — that bar belongs to an ingested event.
+
+  The provider column is deliberately **not drawn**: naming a vendor would invent the one fact the
+  company-agnostic rule keeps out of the core.
+</Note>
+
+## Callback log
+
+<img src="/images/screens/callback-log.webp" alt="Callback log — inbound provider returns, and their signature verification" noZoom />
+
+The inbound companion to invocations — a callback belongs to an invocation, and the two screens agree.
+
+<Warning>
+  **This is the one door that stores an unauthenticated body**, which is exactly why there is **no
+  reprocess control** on this screen.
+
+  Everywhere else, a rejected unauthenticated request is a metric and never a row — *an unauthenticated
+  body is not evidence.* The callback log earns the exception by needing the body to diagnose a
+  signature mismatch.
+</Warning>
+
+## Report runs
+
+<img src="/images/screens/report-runs.webp" alt="Report runs — status, definition, period, watermark, rows, checksum, duration" noZoom />
+
+`reporting` — the **reproducibility** screen: definition, period, watermark, rows, **checksum**, and
+duration, with a checksum-mismatch finding in the panel.
+
+<Note>
+  Submissions appear only as an inactive tab, **labelled as a different table with a different set of
+  states** — because a run that succeeded is not a filing that was accepted, and merging the two is
+  how a "submitted" flag comes to mean nothing.
+
+  No progress bar and no poll indicator: the screen polls only while a run is non-terminal.
+</Note>
+
+## Report runs and submissions — the earlier hybrid
+
+<img src="/images/screens/report-runs-submissions.webp" alt="An earlier screen carrying both runs and submissions columns" noZoom />
+
+Kept in the gallery because it is instructive: this earlier screen **carried both tables' columns at
+once**, which is how the reproducibility view came to be undrawn for a while. Splitting them is the
+correction.
+
+<CardGroup cols={3}>
+  <Card title="Work" icon="list-check" href="/design/screens/work" />
+  <Card title="Signals" icon="bolt" href="/design/screens/signals" />
+  <Card title="Configure" icon="sliders" href="/design/screens/configure" />
+</CardGroup>

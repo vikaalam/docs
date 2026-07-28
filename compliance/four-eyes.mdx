@@ -1,0 +1,133 @@
+---
+title: "Four eyes and segregation of duties"
+description: "A maker-checker control the system enforces, and the one gap it currently has"
+icon: "user-check"
+mode: "wide"
+---
+
+## The control
+
+Some decisions require that the person who approves is **not** the person who acted. Two approvals in
+sequence, by two different people, in two different queues.
+
+This is the smallest possible high-stakes control, and the one most likely to be quietly wrong.
+
+<Warning>
+  Most controls fail by producing **no work** or **the wrong work**. This one fails by producing
+  **work that looks complete** — an approval chain where one person played two roles.
+
+  That is why it is enforced by the engine rather than by policy, training, or a checkbox.
+</Warning>
+
+## How it is enforced
+
+The control does not say *"this needs four eyes"*. It **names a prior step**, and the engine resolves
+that step's actor into a list of people to exclude from the current one.
+
+<Steps>
+  <Step title="The definition names the step to exclude">
+    Not a person and not a boolean. In a chain of approvals, a boolean cannot say *which* prior step's
+    actor should be excluded — it is not inferrable at all.
+  </Step>
+  <Step title="The reference is validated when the definition is published">
+    Not when the case runs.
+
+    A control referencing a step that some branch **skips** would fire or not fire depending on which
+    way the case went — the worst behaviour available for a control, because it looks applied and is
+    conditional.
+  </Step>
+  <Step title="The excluded person is never offered the task">
+    Assignment resolves around them.
+  </Step>
+  <Step title="An attempt anyway is recorded as rejected">
+    Not silently ignored. A denied attempt produces an audit entry with outcome `rejected`, committed
+    in its own transaction precisely so the refusal survives the rollback of the refused action.
+  </Step>
+</Steps>
+
+## Excluding the maker — found as a gap, closed on 2026-07-28
+
+The mechanism above excludes the actor of a **named step**. That left one person it could not reach.
+
+<Warning>
+  **The person who created the thing being approved acted *before the case existed*.** They are not a
+  step actor — their identity arrives as the triggering event's actor.
+
+  So the **first** approval — the one that matters most, because it is the first human to look at an
+  address money will be sent to — could be assigned to the person who added it.
+
+  This was not hypothetical. It is the one control the audited source system **did** implement, at
+  both approval routes, as *creator ≠ approver*. A design that replaces that system must not lose it.
+</Warning>
+
+**The resolution: an explicit `excludeTriggerActor` flag.** The triggering event's actor is added to
+**the same exclusion set** the step codes populate — one set, one mechanism, and the same failure
+mode: if the exclusion empties the queue, it escalates, **never a silent self-approval**.
+
+| Property | Detail |
+| --- | --- |
+| **Defaults to off** | So no already-published definition changes meaning until someone edits it |
+| **A boolean is admissible here** | There is exactly **one** trigger actor per case, so it says nothing ambiguous — which is precisely why a bare "needs four eyes" boolean *is* rejected elsewhere |
+| **Two alternatives recorded, not chosen** | Naming the trigger inside the exclusion list, or mapping the actor into the case's seed context and referencing it by path. Both are recorded with their costs |
+
+<Note>
+  **This was the only open item that was a control that was *off*, rather than a number or a name that
+  was missing.** The others cost correctness later; this one was live. That is why it was closed
+  first.
+</Note>
+
+### The other end of the same control
+
+A related gap was closed the day before: **nothing marked a task type as an approval**, so *"the
+control stopped because nobody is eligible"* was indistinguishable from *"the queue is merely quiet"*.
+
+<Warning>
+  An approval whose four-eyes exclusion leaves **nobody eligible** is a compliance gap. An ordinary
+  unassigned task is a delayed one. They share a backend condition and **must not share a rendering.**
+</Warning>
+
+The marker lives on the task type, seeded per deployment. It could not be derived from the process
+step, because `task` must stay usable for work that no process created.
+
+## Why six copies of one rule was the argument for this layer
+
+The audit of the existing estate found **six independent copies of one maker-checker rule**, in six
+places, written six times.
+
+<Note>
+  That is the argument for a `task` layer expressed as a single number. Six implementations of one
+  control means six places it can drift, six places it must be re-verified, and no single place a
+  reviewer can look to confirm it is applied consistently.
+</Note>
+
+## What a reviewer sees
+
+<img
+  src="/images/screens/task-detail.webp"
+  alt="Task detail — the approval form, who acted before, and the activity history"
+  noZoom
+/>
+
+- **Which stage you are at** — first or second approval
+- **Who did the other one** — because the exclusion depends on it and the reviewer should see it
+- **Who created the thing** — visible even where the exclusion cannot yet use it
+- **Your outcome and your reason**, both recorded permanently
+
+## Segregation beyond four eyes
+
+Four eyes is one control. Two others do related work:
+
+<CardGroup cols={2}>
+  <Card title="Queue scope" icon="users">
+    A compliance reviewer acts inside `queue:compliance` and not inside `queue:treasury`. Enforced on
+    the server on every request, not by hiding controls.
+  </Card>
+  <Card title="Global resources" icon="key">
+    Vendor credentials, outbound destinations, and event publishers are **separately granted**,
+    because holding them is equivalent to holding production credentials.
+  </Card>
+</CardGroup>
+
+<Card title="Worked through, end to end" icon="money-check-dollar" href="/operations/scenarios/maker-checker">
+  Approving a payout destination — the full scenario, including what the source system did before.
+</Card>

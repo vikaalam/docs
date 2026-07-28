@@ -1,0 +1,114 @@
+---
+title: "Glossary"
+description: "Every term this documentation uses in a specific sense"
+icon: "book-open"
+---
+
+Terms are grouped by who needs them. Anything in `code style` is an exact identifier.
+
+## The vocabulary everyone needs
+
+| Term | Means |
+| --- | --- |
+| **Event** | A statement that something happened, in the past tense. Always a **fact**, never an instruction |
+| **Envelope** | The full structure an event travels in — id, type, time, subject, actor, correlation, and the `data` payload |
+| **Subject** | What the event is *about*, as an opaque pair: a type (`customer`, `deposit`) and a reference (`CUS-10293`). The platform validates its **shape**, never its existence |
+| **Actor** | Who caused it. A person, a system, a publisher, or a process. **Never null** — a system change says so |
+| **Workflow** | The configured reaction to an event: a match condition, a priority, and an ordered list of actions |
+| **Action** | One thing a workflow does. Eight kinds exist, and the list is closed |
+| **Task** | One unit of human work — an owner, a deadline, a form, a history |
+| **Case** (process instance) | A long-running, resumable sequence of steps, pinned to the definition version in force when it started |
+| **Correlation id** | The thread. Ties one click, the event it produced, and every downstream effect into one queryable timeline |
+
+## Event lifecycle statuses
+
+What happened to an event after it arrived. These appear on screens and in reports.
+
+| Status | Means | Is it a work queue? |
+| --- | --- | --- |
+| `dispatched` | Everything configured to run, ran | No |
+| `observed` | Somebody **decided** this is worth keeping and worth nothing else | **No — deliberately** |
+| `unmapped` | Registered, but **nobody has configured a reaction yet** | **Yes** |
+| `suppressed` | An exclusive workflow deliberately silenced it | No, but visible on the event |
+| `partial` | Something ran and something did not — **including a notification that reached nobody** | **Yes** |
+| `dead` | An action exhausted its retries | **Yes** |
+| `invalid` | The envelope broke the contract | **Yes** |
+| `duplicate` | This `eventId` already arrived | No |
+| `depth_exceeded` · `cycle_detected` | A **configuration defect** — a reaction looping into itself | **Yes**, surfaced separately |
+| `unknown_subject` | The subject reference does not match its declared shape | **Yes** |
+
+<Note>
+  **`observed` and `unmapped` look identical and are opposites.** One is a decision, the other is an
+  omission. Collapsing them is what makes the `unmapped` queue permanently non-empty — and a queue
+  that is never empty is a queue nobody reads.
+</Note>
+
+## Terms compliance uses
+
+| Term | Means here |
+| --- | --- |
+| **Audit entry** | An actor-attributed change to *this platform's own state*, with a before and an after. **Not** the event log |
+| **Trace** | Everything that happened under one correlation id, in order, across every module |
+| **Four eyes** (maker-checker) | A control where the person who acted may not be the person who approves. Enforced by the process engine, not by policy |
+| **Legal hold** | A block that **refuses** erasure for a scope. The refusal is itself audited |
+| **Crypto-shredding** | Erasure by destroying a per-subject encryption key. The record survives and stays countable; the personal data inside it becomes unreadable |
+| **Merkle seal** | An hourly tamper-evidence checkpoint over a closed interval of audit entries |
+| **Destination** | A **named row** describing where output goes — `regulator-str-filing`, not a URL typed into a field |
+| **Report run** | One reproducible execution of a report definition, with a period, a watermark, a row count, a checksum and a duration |
+| **Submission receipt** | Proof from the receiving party that a filing was accepted. A run is **not done** until one returns |
+| **Retention** | How long something is kept. Declared per record type, and checked continuously against what is configured to satisfy it |
+
+## Terms operations uses
+
+| Term | Means |
+| --- | --- |
+| **Attention** | The one screen that unions the work of six modules. It aggregates and owns nothing |
+| **Queue** | A team's shared pool of work. Also the primary authorization scope — you may see `queue:compliance` and not `queue:treasury` |
+| **SLA** | The deadline on a task. Breaching it escalates rather than failing silently |
+| **Responsibility rule** | Configuration that answers "who should do this" — replacing a channel name hard-coded in application code |
+| **Disposition** | What a workflow is *for*: `act`, `observe`, or `suppress`. The one coloured categorical dimension on the workflows screen |
+| **Delivery** | One notification's last mile. Has its own outcome, including `no_recipient` |
+| **Escalation** | What happens when a deadline passes or nobody responds. Always a visible transition, never a silent retry |
+
+## Terms engineering uses
+
+| Term | Means |
+| --- | --- |
+| **Module** | One of eight code boundaries, each owning one database schema. Talks to others only through a `client/` contract |
+| **Capability** | Infrastructure expressed as a contract with swappable drivers — the event stream, the outbox, the notifier, the audit recorder, the artifact store |
+| **Logical capability** | What a process step asks a vendor for — `identity.verify`, `screening.sanctions`. Bound to an actual provider by a configuration row |
+| **Outbox** | A table written **inside the business transaction**, drained afterwards. How an event survives a crash |
+| **Publisher** | A registered source of events, with an API key scoped to a set of event-type domains |
+| **Projection** | A derived, typed copy — `directory.persons` from the identity provider, `report_facts` from events |
+| **Idempotency key** | A derived key that makes a retry collide with its own prior row rather than duplicating an effect |
+| **Cycle guard** | The check that stops a reaction looping. Keyed on **event type *and* subject**, never type alone |
+| **Scope** | The third part of a permission, after resource and action. A `text[]` of labels on the row. An **empty array means unscoped and visible** |
+| **Strangler** | The migration pattern: run old and new side by side, compare, then remove the old one publisher at a time |
+
+## Naming conventions
+
+<CardGroup cols={2}>
+  <Card title="Event types" icon="tag">
+    `<domain>.<entity>.<past-tense-verb>`
+
+    `customer.account.created` · `treasury.deposit.received` · `task.item.state_changed`
+
+    Past tense is not decoration — it is the enforcement of "publishers state facts".
+  </Card>
+  <Card title="Destinations" icon="location-dot">
+    A **name**, never a URL.
+
+    `regulator-kyc-filing` · `treasury-core-withdrawals`
+
+    A URL in a UI-editable field is the failure this convention exists to prevent.
+  </Card>
+</CardGroup>
+
+<Note>
+  **Five platform domains ship with the core** — `task` · `process` · `integration` · `reporting` ·
+  `directory` — because the return path re-enters through the same ingest as any external fact, and
+  an unregistered event type is a `404`.
+
+  **Zero business domains ship.** `customer`, `treasury`, `compliance` and the rest are registered by
+  the deploying company as seed configuration.
+</Note>

@@ -1,0 +1,180 @@
+---
+title: "Compliance questions"
+description: "The questions asked in an assessment, and the honest answers"
+icon: "circle-question"
+---
+
+<AccordionGroup>
+  <Accordion title="Can anyone delete or edit an audit entry?" icon="lock">
+    No. The application's database role holds `INSERT` and `SELECT` on the audit table and **nothing
+    else**. There is no code path that can update or delete an entry, because the privilege does not
+    exist.
+
+    A separate, more privileged credential exists only for the scheduled retention job that drops
+    aged partitions — and that job is itself audited.
+  </Accordion>
+
+  <Accordion title="What if the audit write fails?" icon="triangle-exclamation">
+    **The business change rolls back.**
+
+    The entry is written inside the same transaction as the change it describes. An audit trail that
+    is *sometimes* written is equivalent to none, so a failure to record is treated as a failure to
+    act.
+
+    It surfaces as a server error, never as a silent skip.
+  </Accordion>
+
+  <Accordion title="Is an attempt that was refused recorded?" icon="ban">
+    Yes — and this took a specific design fix to make possible.
+
+    A denied permission or a four-eyes violation means something threw. The exception propagates, the
+    transaction rolls back, **and would take the audit entry with it**. The store built to prove a
+    denial occurred could never retain one.
+
+    So a `rejected` entry commits in **its own transaction**. That is safe because there is no
+    business change for it to be atomic with.
+
+    One consequence, in the right direction: **an over-recorded denial is a nuisance; an unrecorded
+    one is a hole.**
+  </Accordion>
+
+  <Accordion title="How do we honour an erasure request without destroying evidence?" icon="eraser">
+    By destroying the **key**, not the record.
+
+    Personal data in long-retention stores is encrypted with a per-subject key. Erasure destroys that
+    key. The record survives, stays countable, and remains part of the history; the personal data
+    inside it becomes permanently unreadable.
+
+    The destruction is itself recorded, which is what makes the erasure **provable** — the half of the
+    obligation that a deletion cannot satisfy.
+
+    **The critical caveat:** this must be in place **before the first personal data is written**.
+    Retrofitting means re-encrypting an append-only history.
+  </Accordion>
+
+  <Accordion title="Can a legal hold stop an erasure?" icon="gavel">
+    Yes. A hold in force **refuses** the key destruction, and the refusal is audited with its reason.
+
+    A hold also overrides artifact retention dates and audit partition drops — the hold wins.
+
+    **One defect is recorded rather than hidden:** the interlock currently looks up holds by *subject*,
+    and a hold scoped by *correlation id* — the natural scope for a case-level hold — names no
+    subject, so it would not be found. That is a gap to close.
+  </Accordion>
+
+  <Accordion title="Can we prove a report was actually filed?" icon="receipt">
+    Yes, by the **stored receipt**. A run is not done until one comes back.
+
+    The receipt itself is stored, not a pointer to the invocation that produced it — because the
+    invocation is retained for months and the filing for years. A proof that expires on a schedule
+    nobody intended is not a proof.
+
+    Alongside it: the definition version that produced the file, the period, the watermark, the row
+    count, and a **checksum** that makes reproducibility checkable rather than asserted.
+  </Accordion>
+
+  <Accordion title="Could a filing be submitted twice?" icon="clone">
+    Not by design, and not by relying on the far side.
+
+    Sending an idempotency header is correct and costs nothing, but *relying* on it is an assumption
+    dressed as a contract — a third-party regulator gateway may honour it, ignore it, or implement it
+    differently, and you find out during an incident.
+
+    So at-most-once is achieved **on our side**: mark before calling, in its own transaction, then
+    reconcile by querying status rather than blindly resending.
+  </Accordion>
+
+  <Accordion title="Can we say &quot;nothing happened&quot; means nothing needed to happen?" icon="volume-xmark">
+    Almost — and the distinction is exactly the one this design spends the most effort on.
+
+    An event that produced nothing carries **which kind of nothing**:
+
+    - `observed` — somebody **decided** it is worth keeping and worth nothing else. A decision, with
+      an actor and a date.
+    - `unmapped` — **nobody has looked at it yet**. A control gap, and a queue item.
+
+    Because those are separate statuses, the `unmapped` queue can reach zero — which is what makes
+    "the queue is empty" a meaningful statement.
+
+    **The exception:** the platform cannot see occurrences that never became facts in the source
+    system. 32 of those are itemised.
+  </Accordion>
+
+  <Accordion title="Who can read the audit trail, and is reading it recorded?" icon="eye">
+    Reading is its own permission, not implied by access to the work the entries describe. **Exporting
+    is a separate permission again**, because an export leaves the system.
+
+    And yes — an export produces an audit entry with the exporter's name and the scope they chose.
+    The columns are part of the export form on purpose, so that widening an export cannot happen
+    quietly.
+
+    **Open, recorded rather than filled in:** whether an export should require a stated *reason*. That
+    is a compliance decision and it has not been taken.
+  </Accordion>
+
+  <Accordion title="How do we know the record has not been tampered with?" icon="fingerprint">
+    Hourly cryptographic seals over closed intervals. Verification recomputes and compares, and anyone
+    with the permission can run it.
+
+    **The honest limits:** a passing check proves the sealed entries are unchanged. It does **not**
+    prove that every change produced an entry, and it does not cover the **unsealed tail** since the
+    last seal.
+
+    A change made and reverted **inside one unsealed interval** leaves the same evidence as no change.
+    That detection window is the cost of periodic sealing, and periodic sealing was chosen because a
+    per-row chain serialises every concurrent write for a property the seal already provides.
+  </Accordion>
+
+  <Accordion title="Someone with configuration access could change who gets notified. Is that controlled?" icon="user-lock">
+    It is **detected and attributable**, not prevented.
+
+    Configuration lives in a database rather than in git — a deliberate trade for "a new reaction must
+    not require a deploy". The compensating controls are mandatory before production: a diffable
+    configuration export, and the audit trail with a before/after diff and an actor on every change.
+
+    The framing to take into an assessment: **an operator who can edit a workflow can change who is
+    notified about a compliance failure. That is exactly as sensitive as a code deploy.** How that is
+    supervised is a control-environment decision, and this documentation states the risk rather than
+    minimising it.
+  </Accordion>
+
+  <Accordion title="Are statutory deadlines calculated correctly?" icon="calendar">
+    **Not yet, and this is called out as an open question rather than assumed.**
+
+    Timers are relative durations anchored at step entry. A statutory window is anchored to an
+    external date and counted in **business days in the regulator's jurisdiction**. Nothing in the
+    architecture owns a business-day calendar.
+
+    A filing deadline computed in calendar days when the statute says business days is wrong in
+    exactly the direction that matters. Both the calendar and the absolute-deadline anchor must be
+    resolved before a statutory clock is relied on.
+  </Accordion>
+
+  <Accordion title="What happens to identity documents returned by a screening vendor?" icon="id-card">
+    They are stored in the vendor-invocation log, which is deliberately retained for a **short** period
+    — shorter than the audit record.
+
+    **The field-level redaction policy and its retention are an open question that must be agreed with
+    compliance before that module ships, not after.** That is stated as a hard sequencing requirement.
+  </Accordion>
+
+  <Accordion title="When is any of this available?" icon="road">
+    Nothing is running today. This is a design.
+
+    Compliance sees the change in stages: **slice 2** makes human work attributable, **slice 3** brings
+    the four-eyes control and vendor invocations, and **slice 4** brings reproducible reports with
+    proof of filing.
+
+    The one thing that cannot wait for its slice is crypto-shredding — it must exist before the first
+    personal data is written.
+  </Accordion>
+</AccordionGroup>
+
+<CardGroup cols={2}>
+  <Card title="Honest limits" icon="triangle-exclamation" href="/compliance/limitations">
+    The complete list, including the gaps still open.
+  </Card>
+  <Card title="Control map" icon="table-list" href="/compliance/control-map">
+    Objective by objective, what supports it.
+  </Card>
+</CardGroup>

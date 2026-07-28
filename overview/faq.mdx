@@ -1,0 +1,144 @@
+---
+title: "Questions people actually ask"
+description: "The objections raised in every first review of this design, and the answers"
+icon: "circle-question"
+---
+
+<AccordionGroup>
+  <Accordion title="Isn't this just a workflow engine? Why not buy one?" icon="cart-shopping">
+    A workflow engine gives you the `process` layer and nothing else. It does not answer *who is
+    responsible*, it does not own the last mile to a person, it does not hold vendor credentials
+    behind a logical capability, and it does not produce a regulatory artifact with a submission
+    receipt.
+
+    More importantly: this platform is **explicitly not a BPMN engine**. Process definitions cover
+    sequence, branch, parallel, wait and timer, and nothing more. Anything beyond that is a signal
+    that the flow belongs in a dedicated engine — a decision to take deliberately rather than by
+    accumulation.
+  </Accordion>
+
+  <Accordion title="Why not just refactor the existing services?" icon="screwdriver-wrench">
+    You can, and most of the findings would improve. One would not.
+
+    **Not one of the seven services audited models who is responsible for a thing.** Every
+    destination is a channel, chosen by the code that happens to be running. That is not a code-quality
+    problem you can refactor your way out of — nothing in those codebases was ever asked to hold a
+    responsibility model, so there is nothing to clean up.
+
+    The second reason is structural: the operational layer would still have **no single place**, so it
+    would still be un-inspectable, un-testable and un-hand-overable.
+  </Accordion>
+
+  <Accordion title="Configuration in a database, not in git — isn't that a step backwards?" icon="database">
+    It is a real cost, and it is stated as one rather than defended.
+
+    The requirement it buys is *"a new reaction must not require a deploy"*, which is the difference
+    between a compliance rule changing in an afternoon and changing in a sprint.
+
+    Two mitigations are **mandatory before production**, not optional:
+
+    1. A configuration export/import that produces a **diffable file**.
+    2. The audit trail, recording every configuration change with a before/after diff and an actor.
+
+    The honest framing: an operator who can edit a workflow can change who is notified about a
+    compliance failure. **That is exactly as sensitive as a code deploy and must be reviewable in the
+    same way.**
+  </Accordion>
+
+  <Accordion title="Why is audit un-extractable? That sounds like a design smell" icon="shield-check">
+    It is a deliberate trade, recorded as a decision rather than discovered later.
+
+    The audit entry is written **inside the same database transaction as the change it describes**. If
+    the audit write fails, the business change rolls back.
+
+    That is the correct behaviour for a regulated operator — an audit trail that is *sometimes*
+    written is equivalent to none. The price is that `audit` can never move into a separate service
+    without losing the guarantee, and that price is accepted explicitly.
+
+    Every other module is extractable, and the extraction path is written down.
+  </Accordion>
+
+  <Accordion title="Why not multi-tenant? Wouldn't one instance be cheaper?" icon="building">
+    *"Usable in any company"* means a reusable **codebase**, not a shared **instance**.
+
+    Deploying per company removes an entire class of bug — cross-tenant leakage — and removes a
+    `tenant_id` column from every table and every query. There is no tenant column anywhere.
+
+    Adding multi-tenancy later is a real migration, and that is accepted rather than hedged. The
+    pressure to collapse authorization *scope* into tenancy will be constant; they answer different
+    questions and the distinction is written down for that reason.
+  </Accordion>
+
+  <Accordion title="What happens when a vendor is down?" icon="plug-circle-xmark">
+    Nothing that takes the platform with it.
+
+    A capability reports at boot whether its driver is present and healthy. **A missing driver
+    degrades one capability, never the process.** If the notifier is down, ingest continues and
+    notifications queue in an outbox; the alternative — refusing to start — turns a vendor outage into
+    a platform outage.
+
+    For a provider that is merely slow or failing: a mandatory per-provider timeout, retry with
+    backoff, and past the budget the invocation becomes `dead` and the process step `failed` —
+    **visible**, in the same queue as everything else that needs a person.
+  </Accordion>
+
+  <Accordion title="How does swapping a vendor work in practice?" icon="right-left">
+    A process step never names a vendor. It asks for a **logical capability** — `identity.verify`,
+    `screening.sanctions`, `document.fetch`.
+
+    A configuration table maps that logical capability to a provider and a connector. Replacing a
+    vendor is **one binding row plus one connector file**, and **no process definition changes**.
+
+    This matters because process definitions are versioned and long-lived. A vendor name inside one
+    would outlive the vendor.
+  </Accordion>
+
+  <Accordion title="If it doesn't own the customer, how does it know anything about them?" icon="user-slash">
+    It doesn't, and that is the point.
+
+    An event carries a subject as an opaque pair — a type and a reference — plus a `data` payload of
+    **facts, not pointers**. The platform validates that the reference *matches its declared shape*;
+    it never validates that it *exists*, because it does not own the id space.
+
+    A typo like `custmer` is caught. A reference to a customer deleted upstream is not caught, and is
+    not supposed to be.
+
+    Everything a person needs to act on is in the event, put there by the publisher — which is exactly
+    the discipline the audit found missing.
+  </Accordion>
+
+  <Accordion title="Can we start with just the notification part?" icon="bell">
+    Yes — that is literally slice 1, and it is the slice that pays for the project.
+
+    Slice 0 (foundation) then slice 1 (`automation` + `notification`) replaces the scattered chat
+    calls and makes *"which events notify whom"* a query. Everything after that is additive.
+
+    The one thing that **cannot** be deferred is crypto-shredding: it must be in place before the
+    first personal data is written, because retrofitting it means re-encrypting an append-only
+    history.
+  </Accordion>
+
+  <Accordion title="Is any of this running today?" icon="triangle-exclamation">
+    No. This is a **design spike**.
+
+    What exists: the architecture specification, eight module specifications, eleven use-case
+    walkthroughs, the database schema (verified by applying it to PostgreSQL), a machine-readable
+    event envelope schema, an OpenAPI surface, a seeded event-type catalogue, the boundary CI gates,
+    and **47 designed screens**.
+
+    What does not exist: the running application. Every screenshot on this site is a design export,
+    not a photograph of software.
+  </Accordion>
+</AccordionGroup>
+
+<CardGroup cols={3}>
+  <Card title="Operations questions" icon="list-check" href="/operations/faq">
+    What changes for an analyst's day.
+  </Card>
+  <Card title="Compliance questions" icon="scale-balanced" href="/compliance/faq">
+    Evidence, retention, and what this does not prove.
+  </Card>
+  <Card title="Open questions" icon="circle-question" href="/engineering/open-questions">
+    The ones with no answer yet, recorded rather than assumed.
+  </Card>
+</CardGroup>

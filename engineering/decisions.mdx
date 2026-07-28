@@ -1,0 +1,342 @@
+---
+title: "Decision records"
+description: "All 32 — what was decided, what was rejected, and what it costs"
+icon: "gavel"
+mode: "wide"
+---
+
+Three generations, and the generation tells you how the decision was found.
+
+| Generation | How they were found |
+| --- | --- |
+| **ADR-01 – 14** | The original design |
+| **ADR-15 – 24** | A **feasibility audit** of the first fourteen and the eight module documents. **Five fix things that could not have worked as written** |
+| **ADR-25 – 32** | Reading the **eight module schemas against each other** rather than each on its own. Four fix things that could not have been migrated |
+
+<Note>
+  That progression is the argument for cross-schema review as a scheduled activity rather than a
+  reading habit. The second and third generations found defects that **no single document could have
+  surfaced**.
+</Note>
+
+## Generation 1 — the original design
+
+<AccordionGroup>
+  <Accordion title="ADR-01 · Three layers: automation, process, task" icon="layer-group">
+    **Context:** the onboarding flow is sequential, long-running, and has human steps.
+
+    **Rejected:** a single "workflow" module; chaining actions inside `automation`.
+
+    **Cost:** one more module. **In exchange:** *"where is this case?"* is one query, and `automation`
+    stays stateless.
+  </Accordion>
+  <Accordion title="ADR-02 · Downward calls synchronous, upward returns asynchronous" icon="arrows-turn-right">
+    **Context:** `task → process` and `integration → process` would both be cycles.
+
+    **Rejected:** direct callbacks; a shared mediator.
+
+    **Cost:** one Redis round trip per resumption. **Buys:** durability, visibility, and a `task`
+    module usable without any process.
+  </Accordion>
+  <Accordion title="ADR-03 · automation is the only stream reader" icon="tower-broadcast">
+    **Rejected:** each module subscribing to its own streams.
+
+    **Consequence:** internal transitions appear in the same ingest history as external events, and
+    ordering plus idempotency live in **one** place.
+  </Accordion>
+  <Accordion title="ADR-04 · Deploy per company, not multi-tenant" icon="building">
+    **Rejected:** a tenant column on every table with row-level isolation.
+
+    **Consequence:** no tenant column, no cross-tenant leak class of bug. Adding multi-tenancy later is
+    a real migration — **accepted**.
+  </Accordion>
+  <Accordion title="ADR-05 · integration is the only outbound door" icon="plug">
+    **Context:** vendor connectors have state — async callbacks, rate limits, per-provider credentials.
+
+    **Rejected:** egress inside `automation`, as in the earlier design.
+
+    **Consequence:** one place holds credentials and the SSRF guard; `automation` holds **no secrets at
+    all**.
+  </Accordion>
+  <Accordion title="ADR-06 · Logical capabilities, not vendor names in definitions" icon="right-left">
+    **Rejected:** naming the provider in the process step.
+
+    **Consequence:** swapping a vendor never touches a process definition. **Costs one indirection
+    table.**
+  </Accordion>
+  <Accordion title="ADR-07 · Audit is a capability writing in the caller's transaction" icon="lock">
+    **Context:** an audit that is *sometimes* written is equivalent to none.
+
+    **Rejected:** an `audit` module called through a client.
+
+    **Consequence:** `audit` is **permanently un-extractable**, and an audit failure rolls back the
+    business change. **Both accepted deliberately.**
+  </Accordion>
+  <Accordion title="ADR-08 · Artifacts are a capability, not a module" icon="box-archive">
+    **Rejected:** a `document` module — which would have forced `task → reporting`.
+
+    **Consequence:** retention and legal hold live with the capability. If artifact policy grows a
+    domain of its own, it becomes module nine.
+  </Accordion>
+  <Accordion title="ADR-09 · directory holds people and responsibility rules" icon="address-book">
+    **Context:** both are always read together to answer *"who"*.
+
+    **Rejected:** separate catalog and ownership modules.
+
+    **Extraction trigger recorded:** a rule engine or on-call scheduling arriving.
+  </Accordion>
+  <Accordion title="ADR-10 · Process instances pinned to a definition version" icon="thumbtack">
+    **Context:** a regulated case must be auditable against the rules in force when it started.
+
+    **Rejected:** mutable definitions; migrating live instances.
+
+    **Consequence:** old versions are never deleted. Storage grows; retention is a policy decision.
+  </Accordion>
+  <Accordion title="ADR-11 · No rollback, no compensation engine" icon="rotate-left">
+    **Context:** **compensation after a human has been told something is fiction.**
+
+    **Rejected:** automatic reverse execution.
+
+    **Consequence:** undo is an explicit compensating step, visible like any other.
+  </Accordion>
+  <Accordion title="ADR-12 · Configuration in the database, editable in the UI" icon="database">
+    **Context:** *"a new reaction must not require a deploy"*.
+
+    **Rejected:** definitions in git, deployed.
+
+    **Cost:** configuration is not in git. **Mandatory mitigations:** export/import to a diffable file,
+    plus the audit trail.
+  </Accordion>
+  <Accordion title="ADR-13 · All matching workflows run; priority orders, exclusive overrides" icon="filter">
+    **Context:** audit, notification and task concerns attach to the same event but are owned by
+    different teams.
+
+    **Rejected:** first-match-wins by priority.
+
+    **Cost:** an event can trigger more work than its author expected — mitigated by the consequence
+    preview.
+  </Accordion>
+  <Accordion title="ADR-14 · observed is a distinct status from unmapped" icon="eye">
+    **Context:** many events are worth keeping and worth nothing else.
+
+    **Rejected:** one "no action" status with a filter.
+
+    **Consequence:** the `unmapped` queue **can actually reach zero**, so it stays worth reading. Cost:
+    one deliberate configuration step to declare an event log-only.
+  </Accordion>
+</AccordionGroup>
+
+## Generation 2 — the feasibility audit
+
+<Note>
+  Five of these fix things that **could not have worked as written**.
+</Note>
+
+<AccordionGroup>
+  <Accordion title="ADR-15 · A separate unpartitioned event-keys table carries idempotency" icon="fingerprint">
+    **Could not have worked.** PostgreSQL rejects a unique index on a partitioned table that omits the
+    partition key, so a unique constraint on the occurrence id was **uncreatable**.
+
+    **Rejected:** hash partitioning — makes the constraint legal and destroys the drop-partition
+    retention that was the reason for partitioning.
+
+    **Consequence:** one extra table, and a hard interlock — **key retention must exceed stream
+    retention**, or a redelivered event becomes a duplicate notification.
+  </Accordion>
+  <Accordion title="ADR-16 · The audit transaction lives in request context" icon="lock">
+    **Could not have worked.** An interceptor cannot join a transaction that has already committed,
+    cannot read prior row state, and **an entry recording a rejection rolls back together with the
+    rejection it records**.
+
+    **Rejected:** passing a transaction reference; making audit best-effort.
+
+    **Consequence:** the guarantee moves from the type signature to runtime context. **The wiring needs
+    a spike before it is relied on.**
+  </Accordion>
+  <Accordion title="ADR-17 · An eighth action type, project" icon="table">
+    **Could not have worked.** Both `directory` and `reporting` declare they consume events through
+    `automation`, and **no action type could reach either** — while ADR-03 forbids them subscribing
+    directly.
+
+    **Rejected:** per-module stream consumers, which delete ADR-03's benefit entirely.
+
+    **Consequence:** projections inherit the outbox's idempotency, retry and dead-letter visibility.
+  </Accordion>
+  <Accordion title="ADR-18 · N pump workers; only scanners and the sealer are single-active" icon="users-gear">
+    **Context:** "exactly one worker" made the component **every hand-off passes through** a single
+    point of failure with a throughput ceiling — for a guarantee `SKIP LOCKED` plus derived idempotency
+    keys already provides.
+
+    **Consequence:** the outbox must claim by aggregate to preserve ordering. Leader election replaces
+    a deployment constraint with a runtime one.
+  </Accordion>
+  <Accordion title="ADR-19 · Crypto-shredding" icon="key">
+    **Context:** append-only audit and a right to erasure cannot both be satisfied by deletion.
+
+    **Rejected:** deleting audit rows (destroys the guarantee); refusing erasure (refuses a legal
+    obligation).
+
+    **Consequence:** must be in place **before the first personal data is written.** Legal hold
+    suspends key destruction, audited.
+  </Accordion>
+  <Accordion title="ADR-20 · Vue 3 + Vite SPA — reversed twice" icon="code">
+    **Context:** SSR is worth nothing behind SSO, and a framework server adds a second auth boundary
+    plus a runtime process.
+
+    **Amended:** the framework half was previously React, on the strength of one vendor component.
+    **That argument lets a swappable, unverified driver pin the least reversible choice in the web
+    application — to protect a component no screen mounts.**
+
+    **Consequence:** one fewer runtime process; the web port disappears. Token lifecycle, CSRF and
+    route guards must be stated explicitly rather than inherited. **The design language is
+    unaffected.**
+  </Accordion>
+  <Accordion title="ADR-21 · no_recipient makes the event partial" icon="user-slash">
+    **Context:** the ingest history showed **green for an alert nobody received**, and the finding lived
+    only in the delivery log.
+
+    **Rejected:** leaving it `dispatched`; adding a twelfth status.
+
+    **Cost:** the `partial` queue mixes two problem classes, so the interface must distinguish them by
+    action status.
+  </Accordion>
+  <Accordion title="ADR-22 · The cycle guard keys on event type AND subject" icon="rotate">
+    **Could not have worked.** Once the return path runs through the stream, one event type
+    **legitimately recurs four times in a single case**. A type-only guard would have stopped healthy
+    cases.
+
+    **Consequence:** an event with no subject cannot be cycle-guarded — such event types are **refused
+    registration**.
+  </Accordion>
+  <Accordion title="ADR-23 · Process context is derived, not stored" icon="diagram-project">
+    **Could not have worked.** Parallel branches performed read-modify-write on one JSON column from
+    separate transactions, **silently losing a branch's result** and leaving the join to evaluate
+    incomplete data.
+
+    **Rejected:** row locking — which serialises the branches at the step designed to run them
+    concurrently.
+
+    **Consequence:** no column, no contention, no divergence. The context was a **denormalised copy**.
+  </Accordion>
+  <Accordion title="ADR-24 · persons carries two activity flags" icon="user-check">
+    **Context:** four passages said activity is ours and never overwritten; one said the projection
+    deactivates a leaver. **Both behaviours are wanted.**
+
+    **Rejected:** one column with precedence rules — unreadable, and it loses the distinction.
+
+    **Consequence:** it separates *"suspended by us, still employed"* from *"gone from the identity
+    provider"*, which need different escalation copy.
+  </Accordion>
+</AccordionGroup>
+
+## Generation 3 — reading the schemas against each other
+
+<Note>
+  Four of these fix things that **could not have been migrated as written**. The rest close gaps that
+  had **no owner, because they were nobody's single schema.**
+</Note>
+
+<AccordionGroup>
+  <Accordion title="ADR-25 · One canonical outbox shape" icon="inbox">
+    **Could not have worked.** The specification said one shape per module and the modules defined
+    **five**. Only one carried depth and causation, so the loop guard **did not apply** to three
+    modules' traffic; `directory` published three events with **no outbox at all**; and every module
+    claimed to drain "in id order" over a **random UUID key, which has no order**.
+
+    **Rejected:** per-module shapes with a dispatcher that knows which module it is reading — the same
+    defect the contract forbids for outbound destinations, turned inward.
+
+    **Consequence:** `bigint IDENTITY` is a stated exception to the UUID rule.
+  </Accordion>
+  <Accordion title="ADR-26 · One crypto-shredding registry, one column name" icon="key">
+    **Could not have worked.** Erasure was referenced by four tables under **three column names and two
+    types**, with **no table anywhere** holding a key, a version, or a destruction state.
+
+    **Rejected:** a key per module — erasure becomes *N* operations that can partially fail, which is
+    not erasure. Deriving keys on the fly with no registry — nothing then records that a key was
+    destroyed, so erasure cannot be **proven**.
+
+    **Consequence:** a partial unique index makes "one active key per subject" a **database fact**.
+  </Accordion>
+  <Accordion title="ADR-27 · A partitioned table never carries a global unique constraint" icon="table-columns">
+    **Could not have been migrated.** ADR-15 solved this once and it was treated as a one-off. Applying
+    it as a rule found **two more tables already declaring partitioning and a unique constraint
+    together** — in modules that reason at length about what happens when that constraint stops firing.
+
+    **Consequence:** a third retention interlock. `action_executions` is named as the next casualty,
+    with the decision due before its migration.
+  </Accordion>
+  <Accordion title="ADR-28 · The cross-module dead-letter queue is a read-only view" icon="eye">
+    **Context:** a dead-letter table alongside a `dead_at` column is two representations of one fact —
+    but an operator needs **one screen**, and seven screens is how a dead letter goes unnoticed.
+
+    **Rejected:** keeping both and reconciling them (*the reconciliation is the bug*); one screen per
+    module (no aggregate).
+
+    **Consequence:** the platform's **only sanctioned cross-schema read**, named as an exception so it
+    is never cited as precedent.
+  </Accordion>
+  <Accordion title="ADR-29 · Subject types are registered rows with a declared format" icon="fingerprint">
+    **Context:** the first real estate carries **three incompatible identifier regimes at once**,
+    including rows carrying two ids with different consumers using different ones, and a polymorphic
+    reference column already in production.
+
+    **A bare opaque string silently splits one subject type into two populations that never meet.**
+
+    **Rejected:** validating against a local table (violates the dividing principle); requiring
+    publishers to normalise (the platform does not own the id space).
+  </Accordion>
+  <Accordion title="ADR-30 · Authorization scope is a text array of labels" icon="lock">
+    **Could not have worked.** The permission model enforces a three-part permission **whose third part
+    had no column to evaluate against.**
+
+    **Rejected:** a tenant column (answers a different question); deriving scope at read time (a
+    responsibility-rule change would **silently alter who can see historical work**).
+
+    **Consequence:** an empty array means **unscoped and visible** — stated because the opposite reading
+    looks exactly like a permissions bug.
+  </Accordion>
+  <Accordion title="ADR-31 · Decimals are strings inside JSON" icon="calculator">
+    **Context:** JSON numbers are IEEE-754 doubles, so precision is lost **with no error** — and a
+    threshold condition evaluated over doubles is wrong at exactly the boundary a large-transaction rule
+    exists to detect.
+
+    **Rejected:** accepting numbers and coercing — **it round-trips convincingly for months**.
+
+    **Consequence:** a condition comparing a decimal path to a float literal is rejected **when the
+    workflow is saved**. *A compliance threshold that is wrong at the boundary is worse than one that is
+    absent, because it looks configured.*
+  </Accordion>
+  <Accordion title="ADR-32 · Authorization policy is authored elsewhere and enforced here" icon="user-lock">
+    **Context:** the estate runs **seven distinct inbound auth mechanisms** and no permission is
+    portable between them. One human's authority is re-declared in every service, and a revocation is
+    *N* manual edits nobody can enumerate. This platform would have added an **eighth**.
+
+    **Rejected:** a central authorize-per-request call — makes another service the p99 floor of every
+    request, **and it cannot see the scope columns**; an auth module inside this platform; the identity
+    provider's own authorization services — policy then lives in a vendor console where it cannot be
+    screened or approval-gated.
+
+    **Consequence:** revocation becomes eventually consistent, stated as residual risk for the three
+    global resources. Slice 0 needs a policy source before it can boot.
+  </Accordion>
+</AccordionGroup>
+
+## What this list is not
+
+<Warning>
+  The feasibility audit that produced generation 2 is **retained as a document, and it is not an
+  override.** Its own header reads: *read the architecture for what is true; read this for why.*
+
+  Every finding is already folded in. It even carries **superseded entries of its own** — the frontend
+  decision went Vue → React → **Vue again** — so it is **not authoritative even about itself.**
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Open questions" icon="circle-question" href="/engineering/open-questions">
+    What is deliberately not decided.
+  </Card>
+  <Card title="Delivery slices" icon="road" href="/engineering/delivery-slices">
+    The order these get built in.
+  </Card>
+</CardGroup>

@@ -1,0 +1,134 @@
+---
+title: "Integrity and legal holds"
+description: "Tamper-evidence, what a passing check proves, and what it leaves open"
+icon: "fingerprint"
+mode: "wide"
+---
+
+<img
+  src="/images/screens/integrity.webp"
+  alt="Integrity — the verification claim, and the seal table beneath it"
+  noZoom
+/>
+
+## Tamper-evidence, honestly described
+
+An hourly job computes a cryptographic checkpoint over each closed interval of audit entries and
+stores it. Verification recomputes the checkpoint and compares.
+
+<Note>
+  **This screen is a verification surface, and its substance is a sentence rather than a table.**
+
+  What a passing check proves — and what it leaves open — matters more than the list of intervals.
+  That is why the claim sits at the top of the screen and the seal table sits underneath it.
+</Note>
+
+## What a passing check proves
+
+| Proven | Not proven |
+| --- | --- |
+| The sealed entries have not been altered since the seal was written | That every change *produced* an entry |
+| The chain of seals is unbroken over the verified range | That entries after the last seal are protected — that is the **unsealed tail** |
+| The entries are in the order they were committed | That the content of an entry is *correct* — only that it is unchanged |
+
+<Warning>
+  **A detection window exists, and it is the seal interval.** A change made and reverted inside one
+  unsealed interval leaves the same evidence as no change at all.
+
+  This is a property of periodic sealing, and it is stated rather than glossed. The alternative — a
+  per-row hash chain — was rejected because it serialises every concurrent write for a property the
+  hourly seal already provides.
+</Warning>
+
+## Never verified is not a failure
+
+A range that has never been checked is rendered as **neutral**, not as an error.
+
+<Note>
+  A check that has not run is not a failed check. Colouring it red trains people to ignore red.
+</Note>
+
+There is also **no repair action** on this screen, and its absence is a specification rather than an
+omission. A tamper-evidence surface that offers to fix a discrepancy is a surface that can be used to
+hide one.
+
+## Legal holds
+
+<img
+  src="/images/screens/legal-holds.webp"
+  alt="Legal holds — what is held, by whom, and since when"
+  noZoom
+/>
+
+A **legal hold** blocks destruction for a scope. While it is in force:
+
+- An erasure request for anything within its scope is **refused**
+- The refusal is **itself audited** — it is a record, not a silent no-op
+- Artifact retention cannot expire the held items — **the hold wins** over the retention date
+
+## Active means one thing
+
+The state of a hold is expressed by the absence of a release date. A hold with no release date is in
+force; a hold with one is not.
+
+<Note>
+  **The absence *is* the datum.** Both hold states render neutral — nothing here is painted green,
+  amber, or accented for a hold being in force. A hold is a fact, not an alarm.
+</Note>
+
+## The interaction with erasure
+
+Holds and erasure are shown together because they interact, and because either one read alone gives
+the wrong impression.
+
+<Steps>
+  <Step title="An erasure request arrives">
+    For a subject, or for a scope.
+  </Step>
+  <Step title="The platform checks for a hold">
+    If one is in force, the request is **rejected** and the rejection is recorded with its reason.
+  </Step>
+  <Step title="If no hold applies, the key is destroyed">
+    Not the record. The record survives, stays countable, and remains part of the history — only the
+    key that made its personal data readable is destroyed.
+  </Step>
+  <Step title="The destruction is audited">
+    So that the erasure can be **proven**, which is the half of an erasure obligation that a deletion
+    cannot satisfy.
+  </Step>
+</Steps>
+
+<Warning>
+  **One finding is rendered on the design itself, rather than hidden.**
+
+  The interlock currently queries holds **by subject**. A hold scoped by *correlation id* — the scope
+  that a case-level hold naturally takes — names no subject, so **the one hold in the worked corpus
+  would not be found by that query.**
+
+  Recorded as a defect to close, not designed around.
+</Warning>
+
+## What is not yet decided
+
+These are recorded as open questions rather than answered with a plausible default.
+
+| Open | Why it is open |
+| --- | --- |
+| How many entries and artifacts a hold actually covers | There is no count anywhere yet — and **both confirmation dialogues depend on it**, because a consequential action needs a measured blast radius, not an invented one |
+| Artifact retention duration | A regulatory answer, not an engineering one |
+| Whether an audit export should require a stated reason | A compliance decision that has not been taken |
+| Field-level redaction for identity-verification responses | Vendor responses contain identity documents. The redaction policy and its retention **must be agreed with compliance before that module ships**, not after |
+
+<Note>
+  Where a number was never stated, that is recorded as an open question rather than filled in with a
+  default. A default retention that nobody chose is worse than a blank, because it looks decided.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Retention and erasure" icon="eraser" href="/compliance/retention-and-erasure">
+    How erasure works without deleting the record.
+  </Card>
+  <Card title="The audit trail" icon="shield-check" href="/compliance/audit-trail">
+    What the seals are protecting.
+  </Card>
+</CardGroup>

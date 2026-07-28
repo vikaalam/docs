@@ -1,0 +1,255 @@
+---
+title: "directory"
+description: "People, teams, and who is responsible for what"
+icon: "address-book"
+---
+
+> **People, teams, and who is responsible for what.** A projection of the company identity provider,
+> plus responsibility rules that belong to us and are never overwritten.
+
+| | |
+| --- | --- |
+| Schema | `directory` |
+| Layer | Foundation |
+| Depends on | *nothing — it is the bottom of the graph* |
+| Depended on by | `task`, `notification`, `automation` (the `project` write path), the interface. **Not `process`** — it escalates through `notification`, which resolves against the same chain |
+| Slice | **0 — Foundation** |
+| Extraction trigger | On-call scheduling or a rule engine arrives |
+
+## Why it is its own module
+
+Two questions collapse into one here, and that is the point:
+
+| Question | Nature | Owned by |
+| --- | --- | --- |
+| *Who is this person?* | Pure projection — name, email, team, still employed | **Upstream** |
+| *Who is responsible for X?* | Pure policy — including whether we are willing to route work to them at all | **Us** |
+
+<Note>
+  They are always read together to answer *"who"*, which is why separating them into two modules was
+  rejected. One module, one answer.
+</Note>
+
+## The gap this fills
+
+<Warning>
+  **Not one of the seven services in the audited estate models who is responsible for a thing.** Every
+  destination is a channel, chosen by the code that happens to be running.
+
+  That is the gap this module fills, and it is why responsibility is a **module** rather than a
+  column.
+</Warning>
+
+## The upstream is the auth service, not the identity provider directly
+
+The estate's auth service is the Policy Administration Point, and it performs the scheduled identity
+sweep on this module's behalf.
+
+<Note>
+  Everything that says *"the identity provider"* means *"the identity provider as projected by the
+  auth service"*. The distinction matters for two reasons:
+
+  1. This module needs **no identity-provider client of its own**.
+  2. **Roles and grants are not projected here at all.** This module answers *who a person is* and
+     *who is responsible for a subject* — never *what they are permitted to do*.
+
+  Responsibility roles are **operational routing**, not authorization.
+</Note>
+
+## Two activity flags, not one
+
+A person carries **both**:
+
+| Flag | Owned by | Means |
+| --- | --- | --- |
+| Upstream active | The identity provider | Still in the company directory |
+| Locally enabled | Us | We have not suspended them |
+
+Effective activity is the **conjunction**.
+
+<Note>
+  One column with precedence rules was rejected — unreadable, and it loses the distinction between
+  *"suspended by us, still employed"* and *"gone from the identity provider"*, which need different
+  escalation wording.
+</Note>
+
+## The sweep is the population mechanism, not just drift correction
+
+<Warning>
+  This module ships in **slice 0**, but `automation` does not exist until slice 1 — and the projection
+  feeds through `automation`.
+
+  An events-only design therefore ships a foundation **with no people in it**, where every
+  responsibility lookup correctly returns empty and nothing works.
+</Warning>
+
+So the daily reconciliation sweep is promoted from *drift correction* to **the population
+mechanism**, and drift correction thereafter. That is also more robust — it makes the event path a
+freshness optimisation rather than the only way data arrives.
+
+## The fail-open trap
+
+<Warning>
+  The estate's current team-membership call **fails open to an empty set**.
+
+  A projection must therefore treat an empty response as a **failure**, never as a membership change.
+  Treating it as data silently removes everyone from every team, and surfaces weeks later as
+  unassigned work.
+</Warning>
+
+## Responsibility rules
+
+Rules are **ordered, and the first match wins.**
+
+```
+rule A   domain = compliance · role = reviewer   → team T-COMPLIANCE   priority 10
+rule B   domain = operations · role = reviewer   → team T-OPERATIONS   priority 20
+```
+
+<Warning>
+  **Responsibility keys on what kind of work it is, never on what kind of thing it is about.**
+
+  Keying on the subject type is the trap that only shows up in production: a deposit that both failed
+  attribution *and* breached a threshold matches both rules, lands in both queues, and two teams work
+  it.
+
+  A deposit is not owned by a department. *Reviewing a deposit's name* is.
+</Warning>
+
+The mechanism is a responsibility descriptor on the **task type** — `{domain, role}` — which `task`
+passes to this module. A rule written against a task type is deliberately **not representable**.
+
+## Principal tables
+
+Generated from `migrations/directory/001-init.sql` — never drawn by hand.
+
+```mermaid
+erDiagram
+    persons {
+        uuid id PK
+        varchar external_ref
+        varchar email
+        varchar display_name
+        varchar job_title
+        boolean upstream_active
+        boolean local_enabled
+        varchar timezone
+        more 4_further_columns
+    }
+    teams {
+        uuid id PK
+        varchar code
+        varchar name
+        uuid parent_team_id FK
+        boolean active
+        uuid calendar_id
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    team_members {
+        uuid id PK
+        uuid team_id FK
+        uuid person_id FK
+        varchar membership_role
+        timestamptz effective_from
+        timestamptz effective_to
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    responsibility_roles {
+        uuid id PK
+        varchar code
+        varchar name
+        int rank
+        boolean active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    responsibility_rules {
+        uuid id PK
+        varchar code
+        varchar domain
+        varchar role
+        varchar subject_type
+        jsonb subject_selector
+        varchar target_kind
+        uuid target_ref
+        more 6_further_columns
+    }
+    responsibility_assignments {
+        uuid id PK
+        uuid rule_id
+        varchar domain
+        varchar role
+        varchar subject_type
+        varchar subject_ref
+        uuid person_id
+        timestamptz resolved_at
+        more 2_further_columns
+    }
+    business_calendars {
+        uuid id PK
+        varchar code
+        varchar name
+        varchar timezone
+        int[] working_days
+        jsonb working_hours
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    calendar_holidays {
+        uuid id PK
+        uuid calendar_id FK
+        varchar name
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    outbox {
+        bigint id PK
+        uuid aggregate_id
+        varchar target
+        varchar operation
+        jsonb payload
+        varchar idempotency_key
+        uuid correlation_id
+        uuid causation_id
+        more 8_further_columns
+    }
+    teams ||--o{ teams : "parent_team_id"
+    teams ||--o{ team_members : "team_id"
+    persons ||--o{ team_members : "person_id"
+    business_calendars ||--o{ calendar_holidays : "calendar_id"
+```
+
+<Warning>
+  **No relationship line leaves this schema, and that is the boundary rule rather than an omission.** The 4 lines above are real foreign keys inside `directory`.
+
+  Bare cross-schema references — drawn nowhere, because the database does not enforce them: A person reference into this module's own `persons` table is a real key; anything naming a subject is not.
+</Warning>
+
+<Note>
+  **This module publishes, so it owns an outbox** — and in an earlier version of the roster it did
+  not. That meant its responsibility-change event was either lost on a crash or written inside another
+  module's transaction.
+
+  The publishes-therefore-outbox rule is derivable and checkable, which is how the gap was found.
+</Note>
+
+## Open question carried here
+
+<Warning>
+  **A business-day calendar.** SLAs and statutory deadlines are stated in calendar durations, but a
+  filing window is counted in business days in the regulator's jurisdiction.
+
+  The tables exist here; **the semantics do not**, and every module that computes a deadline would
+  need the same calendar. Recorded rather than assumed.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="task" icon="list-check" href="/engineering/modules/task">
+    The main consumer of "who is responsible".
+  </Card>
+  <Card title="notification" icon="bell" href="/engineering/modules/notification">
+    The other one — and where a failed resolution becomes visible.
+  </Card>
+</CardGroup>

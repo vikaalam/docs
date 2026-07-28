@@ -1,0 +1,166 @@
+---
+title: "The audit capability"
+description: "Why the write path is inverted, what it costs, and the wiring that still needs a spike"
+icon: "lock"
+mode: "wide"
+---
+
+Every mutating operation produces an audit entry, and the entry is written **inside the same database
+transaction as the change itself**. If the audit write fails, **the business change rolls back**.
+
+<Note>
+  That is the correct behaviour for a regulated operator, and its price is explicit: **`audit` can
+  never be extracted into a separate service** without losing the guarantee.
+
+  Recorded as a decision rather than discovered later.
+</Note>
+
+## The contract
+
+```ts
+// capabilities/audit/audit-recorder.ts
+abstract class AuditRecorder {
+  /** Enlists in the transaction held in AsyncLocalStorage. Throws if there is none. */
+  abstract record(entry: AuditEntry): Promise<void>;
+}
+```
+
+## The transaction is context, not a parameter — and that was forced
+
+<Warning>
+  An earlier draft passed a transaction reference. **A NestJS interceptor can never obtain one:** by
+  the time an interceptor observes the response, the service method has returned and its transaction
+  has already committed.
+</Warning>
+
+So the transaction is opened at the boundary and held in AsyncLocalStorage, and repositories and the
+interceptor read the same entity manager.
+
+The price belongs in the record rather than in a commit message:
+
+<Note>
+  **The guarantee moves from visible in the type signature to enforced by runtime context.**
+
+  In exchange, it becomes the enforcement point that the "no cross-module transaction" rule never had
+  either.
+</Note>
+
+## An interceptor cannot produce `before`
+
+The prior row state is in neither the request nor the response — yet `before` and `changed_fields`
+both require it.
+
+So capture is split **three ways**:
+
+| Source | Supplies |
+| --- | --- |
+| **HTTP interceptor** | Actor, IP, user agent, request id, correlation id → written into context |
+| **ORM entity subscriber** | Module, resource type, resource id, action, **before**, **after**, changed fields |
+| **Explicit `record()`** | Everything, for changes with neither an HTTP request nor an ORM event — partition drops, seals, timer expiry |
+
+<Note>
+  **Two capture paths, because one is never enough.**
+
+  The interceptor catches the operator's edits automatically, so a new module is audited **without
+  writing audit code**.
+
+  The explicit calls come from the pump, the process engine, and the timer scanner — which have no
+  HTTP request to intercept, and are exactly the changes nobody watches.
+</Note>
+
+## The one thing that is not verified
+
+<Warning>
+  **Enlistment behaviour when an interceptor and an ORM subscriber share one entity manager differs
+  between transaction libraries.**
+
+  The concept is sound. **The wiring must be proven with a spike before it is relied on**, and it is
+  recorded that way rather than assumed to work.
+
+  The transaction-context library becomes load-bearing platform infrastructure as a result.
+</Warning>
+
+## A rejected attempt commits in its own transaction
+
+This is the second half of the design, and without it the store is **structurally incapable of doing
+the job it exists for**.
+
+<Warning>
+  A denied permission or a four-eyes violation means something threw. The exception propagates, the
+  transaction rolls back — **and takes the audit entry with it.**
+
+  The store built to prove a denial occurred could never retain one.
+</Warning>
+
+| Outcome | Transaction | Why |
+| --- | --- | --- |
+| `applied` | **The caller's** | Atomic with the change it describes. If the audit fails, the change must not stand |
+| `rejected` | **Its own, committed independently** | There is no business change to be atomic *with*. Atomicity here would be atomicity with a rollback |
+
+<Note>
+  Safe precisely because nothing else is at stake — there is no state whose consistency with the entry
+  needs protecting.
+
+  One consequence, in the correct direction: a rejection can commit even when the request later fails
+  for an unrelated reason. **An over-recorded denial is a nuisance; an unrecorded one is a hole.**
+</Note>
+
+## What an entry contains
+
+| Field | Contents |
+| --- | --- |
+| `actor` | `{ type: user \| system \| publisher \| process, ref, display }` — **never null**. A system change says so |
+| `module`, `resource_type`, `resource_id`, `action` | What was touched |
+| `before`, `after` | `jsonb` snapshots, field-redacted by policy |
+| `correlation_id`, `request_id`, `causation_id` | Ties a UI click, an event, and every downstream effect into one thread |
+| `ip`, `user_agent` | Present for HTTP-originated changes, null otherwise |
+| `outcome` | `applied` / `rejected` |
+
+## Append-only is a database privilege
+
+<Warning>
+  **Enforced by the database, not by discipline.** The application role holds `INSERT` and `SELECT` on
+  `audit_entries` and nothing else.
+</Warning>
+
+Tamper-evidence is **periodic rather than per-row**: an hourly sealer computes a Merkle root over each
+closed interval.
+
+<Note>
+  A per-row hash chain was rejected because it **serialises concurrent writes** for a property an
+  hourly seal already provides.
+
+  The cost is a detection window equal to the seal interval, and that is stated rather than glossed.
+</Note>
+
+## The deliberate duplication
+
+`task` additionally keeps its own state-change table.
+
+<Note>
+  That duplication is deliberate: **the operational timeline needs joins and SLA arithmetic on hot
+  data**, while the audit record is immutable and retained for years.
+
+  Different consumers, different retention, different guarantees.
+</Note>
+
+## What audit is not
+
+<Warning>
+  **`audit` is not the event log.**
+
+  It answers *"who changed this workflow / approved this case / downloaded this artifact"*. An external
+  system's fact is **not a change to our state** and does not belong there.
+
+  *"Just log this event"* means `observed` — plus, if it needs to be queryable by shape, a `record`
+  action.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="The audit module" icon="shield-check" href="/engineering/modules/audit">
+    The read side — query, export, seal, holds, erasure.
+  </Card>
+  <Card title="Lifecycle and the four stores" icon="database" href="/engineering/events/lifecycle">
+    Which store answers which question.
+  </Card>
+</CardGroup>

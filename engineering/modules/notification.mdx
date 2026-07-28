@@ -1,0 +1,227 @@
+---
+title: "notification"
+description: "The last mile — recipients, channel policy, and hand-off to a driver"
+icon: "bell"
+mode: "wide"
+---
+
+> **The last mile to a person.** Resolves recipients, computes the effective channel set, and hands
+> off to a notifier driver. It **renders nothing** and decides nothing about *why* the message exists.
+
+| | |
+| --- | --- |
+| Schema | `notification` |
+| Layer | Delivery |
+| Depends on | `directory` via `client/`; the notifier and crypto capabilities |
+| Depended on by | `automation` (`notify`), `process` (escalation), `task` (assignment notices) |
+| Slice | **1 — Reflex** |
+| Extraction trigger | Delivery volume, or a second product needs the same delivery layer |
+
+## Why it is its own module
+
+Because *"who should be told, on which channel, and may they mute it"* is **policy**, while *"put
+bytes on a channel"* is **infrastructure** — and neither belongs in the same place as the thing that
+decided a notification was warranted.
+
+<Note>
+  This module is what replaces the scattered direct-to-chat calls. After slice 1 there is exactly one
+  answer to *"which events produce a message, and who receives it?"* — **and it is a query, not a
+  grep.**
+</Note>
+
+## The module is deliberately thin
+
+Almost everything a notification platform does well — multi-channel fan-out, digesting, user
+preferences, an inbox, per-provider retries — is **bought from the driver**.
+
+What stays here is only what the driver cannot know:
+
+<CardGroup cols={2}>
+  <Card title="Who is responsible" icon="users">
+    Resolved through `directory`. No external notification platform can know this.
+  </Card>
+  <Card title="Which channels may not be muted" icon="volume-high">
+    A mandatory channel for a compliance escalation is a policy decision, not a user preference.
+  </Card>
+</CardGroup>
+
+<Warning>
+  **The driver's internal delivery model must not leak into the core.** Channel fan-out, digesting,
+  and per-person preference are **driver-specific**, not architectural concepts.
+
+  The one thing that *is* platform vocabulary is **category** — it appears on the send contract, on
+  three tables, as a closed union on the dispatch command, as an authorization dimension, and as the
+  scope selector for deliveries.
+</Warning>
+
+## Data, not prose
+
+The payload carries **facts**, so one payload serves every channel and every locale. Message templates
+live in the notifier, not here.
+
+<Warning>
+  In the audited estate, roughly a third of send sites welded amounts, names and `null → '-'` into a
+  display string **at the call site** — and by the time anything reached the wire, **100% were prose**,
+  because one shared chat layer folded every body into a single text field.
+
+  Once that happens the original values are unrecoverable, so nothing downstream can filter, group,
+  translate, or re-render them.
+</Warning>
+
+## Channel policy
+
+<img
+  src="/images/screens/channel-policies.webp"
+  alt="Channel policies — category by severity, mandatory channels, quiet hours, digest windows"
+  noZoom
+/>
+
+A grid of **category × severity**, plus mandatory channels, quiet hours, and a digest window.
+
+| Concept | Notes |
+| --- | --- |
+| **Category** | A **closed union** — incident · assignment · approval · audit. Not domain-flavoured |
+| **Severity** | The column axis, and **never rendered as a pill** — it is a rank, and rank is not a category |
+| **Mandatory channel** | A channel a person cannot mute for this category |
+| **Quiet hours / digest** | When non-urgent messages are held or batched |
+
+<Note>
+  **Where the mandatory channel belongs is a real finding, not a detail.** It goes on the **failure**,
+  not on the approval: an approval sitting in a queue is visible and self-correcting; a compliance
+  escalation nobody sees is not.
+</Note>
+
+## `no_recipient` is not a success
+
+<img
+  src="/images/screens/deliveries.webp"
+  alt="Deliveries — every send, its recipient, its channel, its outcome"
+  noZoom
+/>
+
+<Warning>
+  **A send with nobody to receive marks the event `partial`, never green.**
+
+  Before this rule, the ingest history showed `dispatched` for an alert nobody received, and the
+  finding lived only in this module's delivery log — where nobody looked.
+
+  **The two screens now agree by construction.**
+</Warning>
+
+The cost is stated: the `partial` queue mixes **two problem classes** — a hole in the responsibility
+rules, and a dead destination. The interface distinguishes them by the action's own status.
+
+## One delivery, opened
+
+<img
+  src="/images/screens/delivery-detail.webp"
+  alt="Delivery detail — recipients, the rule evaluated, severity, channels"
+  noZoom
+/>
+
+Shows the whole decision, not just the outcome: who was resolved (or that the count was zero), which
+responsibility rule was evaluated, the severity, and the effective channel set.
+
+<Note>
+  **Severity renders as a border, never a pill.** One strong colour signal per row is the rule the
+  whole interface follows.
+</Note>
+
+## Principal tables
+
+Generated from `migrations/notification/001-init.sql` — never drawn by hand.
+
+```mermaid
+erDiagram
+    channel_policies {
+        uuid id PK
+        varchar category
+        varchar severity
+        text[] channels
+        text[] mandatory_channels
+        jsonb quiet_hours
+        interval digest_window
+        boolean active
+        more 2_further_columns
+    }
+    payload_policies {
+        uuid id PK
+        varchar category
+        jsonb field_rules
+        boolean active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    deliveries {
+        uuid id
+        varchar category
+        varchar severity
+        varchar responsibility_domain
+        varchar subject_type
+        varchar subject_ref
+        uuid recipient_person_id
+        text[] channels_requested
+        more 16_further_columns
+    }
+    delivery_keys {
+        varchar idempotency_key PK
+        uuid delivery_id
+        timestamptz created_at
+    }
+    outbox {
+        bigint id PK
+        uuid aggregate_id
+        varchar target
+        varchar operation
+        jsonb payload
+        varchar idempotency_key
+        uuid correlation_id
+        uuid causation_id
+        more 8_further_columns
+    }
+```
+
+<Note>
+  **This table is partitioned:** `deliveries`.
+
+  A partitioned table **cannot carry a global unique constraint**, which is why `delivery_keys` exists beside it, unpartitioned. An ER diagram cannot express that, so it is stated here.
+</Note>
+
+<Warning>
+  **No relationship line leaves this schema, and that is the boundary rule rather than an omission.** **There is not a single relationship line above, and that is correct** — this schema has no foreign keys at all, in either direction.
+
+  Bare cross-schema references — drawn nowhere, because the database does not enforce them: `subject_key_id` into `platform.subject_keys`, for crypto-shredding.
+</Warning>
+
+<Note>
+  `delivery_keys` exists because `deliveries` is partitioned, and **a partitioned table cannot carry a
+  global unique constraint**. That was found by applying the rule rather than treating an earlier fix
+  as a one-off — this module had **declared both at once**, which would not have migrated.
+</Note>
+
+## A gap found by cross-schema review
+
+<Warning>
+  `deliveries` originally carried **no correlation id at all** — so the last mile, the only part a
+  person actually experiences, fell out of the causal thread.
+
+  A delivery that cannot be correlated cannot answer *"was anyone told about this case?"* without a
+  full-text search of a payload.
+</Warning>
+
+## Retention
+
+Deliveries are retained for **18 months, deliberately shorter than the audit record**. They contain
+the most personal data and the least evidentiary value: a delivery log is operational; an audit entry
+is evidence.
+
+Personal data in them is crypto-shredded on erasure.
+
+<CardGroup cols={2}>
+  <Card title="directory" icon="address-book" href="/engineering/modules/directory">
+    Where recipients come from.
+  </Card>
+  <Card title="Capabilities" icon="plug" href="/engineering/capabilities">
+    The notifier driver — and the optional-method case it forced.
+  </Card>
+</CardGroup>

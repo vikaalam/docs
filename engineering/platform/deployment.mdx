@@ -1,0 +1,205 @@
+---
+title: "Layout and deployment"
+description: "Process roles, single-active jobs, ports, and what refuses to start"
+icon: "server"
+mode: "wide"
+---
+
+## Source layout
+
+```
+workspace-ops/
+├── src/
+│   ├── modules/
+│   │   ├── directory/      client/ · internal/{projection,responsibility}
+│   │   ├── automation/     client/ · internal/{ingest,matcher,actions,dispatch}
+│   │   ├── process/        client/ · internal/{definition,engine,timers,dispatch}
+│   │   ├── task/           client/ · internal/{lifecycle,assignment,sla}
+│   │   ├── notification/   client/ · internal/{dispatch,categories}
+│   │   ├── integration/    client/ · internal/{egress,connectors,callbacks,credentials}
+│   │   ├── reporting/      client/ · internal/{definition,facts,render,submission}
+│   │   ├── audit/          client/ · internal/{query,export,seal}
+│   │   └── registry.ts     MODULE_REGISTRY — one line per module
+│   ├── capabilities/       event-stream/ · outbox/ · notifier/ · lock/ · cache/
+│   │                       authn/ · authz/ · audit-recorder/ · artifact-store/ · crypto/ · clock/
+│   ├── common/             base.entity.ts · errors/ · logging/   (must not know a module exists)
+│   ├── config/             env.validation.ts — the production guard
+│   └── main.ts
+├── migrations/<module>/
+├── test/arch-fixtures/     one rejected fixture per dependency rule
+└── .dependency-cruiser.js
+
+web/                               Vue 3 + Vite SPA — static assets, no runtime process
+├── src/
+│   ├── modules/                   one directory per backend module, same eight names
+│   ├── shared/                    design tokens, signal path, table primitives
+│   │                              ★ must not know a module exists — same rule as common/
+│   ├── api/                       generated client from the OpenAPI spec
+│   └── auth/                      OIDC + PKCE, token lifecycle, route guards
+└── vite.config.ts
+```
+
+<Warning>
+  This is the **planned** layout. There is no product code yet.
+</Warning>
+
+## Why an SPA and not a meta-framework
+
+<Note>
+  **Server-side rendering is worth nothing behind single sign-on**, and a framework server adds a
+  **second authentication boundary** plus one more runtime process to deploy, monitor and patch — for
+  capabilities this product does not use.
+</Note>
+
+The bundle is served as static assets by the `api` role or a CDN, **which is why there is no separate
+web port.**
+
+### The framework question is separate, and was decided twice
+
+<Warning>
+  The React decision rested on exactly one argument: the notification vendor ships a React inbox
+  component but no native Vue one, so Vue would need a hand-maintained wrapper.
+
+  **That argument does not survive its own architecture**, for two reasons found on re-reading rather
+  than on preference:
+
+  **It inverts the capability rule.** The notifier is *one driver behind a capability* — swapping the
+  vendor must touch one file, and its import is confined to a single directory. Choosing the largest
+  single choice in the web application from that driver's component catalogue lets an unconfirmed,
+  deliberately swappable vendor pin the decision hardest to reverse.
+
+  **The component it protected is never mounted.** No screen embeds it. The design states outright
+  that inbox read state **belongs to the notifier driver**, outside this product's interface. The
+  wrapper the decision refused to maintain **has no consumer**.
+</Warning>
+
+With the only differentiator gone, the choice returns to team fit: **Vue 3 + Vite + shadcn-vue**.
+
+<Note>
+  **The design language is unaffected** — it is framework-independent by construction. The signal
+  path, the semantic status colours, the mono-versus-sans rule, and English interface copy all carry
+  over unchanged.
+</Note>
+
+The kit is **copied-in components, not a runtime dependency**, so the design tokens stay the single
+source of colour rather than being themed on top of someone else's defaults.
+
+## What a SPA stops hiding
+
+A single-page application makes the token lifecycle explicit rather than inherited: PKCE, an
+in-memory access token, a cookie-borne refresh with a double-submit token, and a single-flight
+renewal guard. It is stated once in [Reference → Authentication](/reference/authentication).
+
+Two consequences belong here rather than there, because they are deployment facts:
+
+- **Route guards mirror the two authorization layers client-side, for navigation only.** The server
+  remains the only enforcement point.
+- **The bundle is split per module**, matching the eight HTTP prefixes — an operator with `task`
+  access should not download the `integration` credential screens.
+
+## Process roles
+
+`APP_ROLE` splits the process **without splitting the deployment**.
+
+| Role | Does |
+| --- | --- |
+| `api` | Serves HTTP, consumes the stream, and serves the SPA bundle |
+| `worker` | Runs everything scheduled. **N workers run** |
+
+## Concurrent versus single-active
+
+These are not the same thing as *one process*, and conflating them is how availability is lost.
+
+| Job | Owner | Concurrency | Cadence |
+| --- | --- | --- | --- |
+| Outbox pump | every module's dispatch | **N concurrent** — claim by aggregate, `SKIP LOCKED` | continuous |
+| Process timer scanner | `process` | single-active, leader-elected | continuous |
+| Task SLA timers | `task` | single-active, leader-elected | continuous |
+| "Waiting with no future timer" guard | `process` | single-active | periodic |
+| Stream recovery reclaim | `automation` | single-active | periodic |
+| Audit Merkle sealer | `audit` | single-active | hourly |
+| Scheduled report runs | `reporting` | single-active | per definition |
+| Identity reconciliation sweep | `directory` | single-active | daily |
+| Audit retention partition drop | `audit` | single-active, **separate DB credential** | daily |
+| Credential expiry pre-warning | `integration` | single-active | daily |
+
+<Warning>
+  **"Single-active" means leader election among N running processes, not one running process.**
+
+  The election is a Postgres advisory lock; the others stand by. **That distinction is the whole of
+  high availability here: a leader that dies is replaced in one lock timeout; a singleton that dies is
+  replaced by a human.**
+</Warning>
+
+### Why N pump workers, not one
+
+<Note>
+  "Exactly one worker" made the component **every hand-off passes through** a single point of failure
+  with a throughput ceiling — for a guarantee that `SKIP LOCKED` plus derived idempotency keys already
+  provides.
+
+  The cost: the outbox must **claim by aggregate** to preserve per-aggregate ordering, and leader
+  election replaces a deployment constraint with a runtime one.
+</Note>
+
+## Two concentration risks, recorded rather than solved
+
+<Warning>
+  **The pump has no priority lane** — a slow provider's retries share a queue with an escalation
+  notification.
+
+  **Batch task creation fires a thundering herd of SLA timers** at the same instant.
+
+  Both need a decision before slice 2 carries real volume.
+</Warning>
+
+## Ports
+
+| Service | Host port |
+| --- | --- |
+| workspace-ops `api` — serves the API **and** the SPA bundle | 3100 |
+| notifier API / dashboard / websocket | per driver |
+| postgres | 5432 |
+| redis | 6379 |
+| object store (development) | 9000 / 9001 |
+
+<Warning>
+  **Redis may be shared between the notifier's queue and the platform's streams in development only.**
+
+  In production they are separate: the notifier's queue needs append-only durability, and **a
+  notification outage must not take the ingest pipeline with it.**
+</Warning>
+
+## Health endpoints are deliberately separate
+
+| Endpoint | Touches | Drives |
+| --- | --- | --- |
+| `/health/live` | **No dependency** | The restart policy |
+| `/health/ready` | Database, stream, notifier | The load balancer |
+| `/health/capabilities` | Every driver, including **which optional methods it implements** | Operational visibility |
+
+<Warning>
+  **Merging live and ready turns a momentary Redis blip into a restart loop.**
+</Warning>
+
+## What refuses to start
+
+<Note>
+  The platform **refuses to start** when no authorization policy snapshot is available at boot —
+  because a process that starts with no policy denies every request, which is an outage wearing the
+  costume of a bug.
+
+  It **must keep running** if that service becomes unreachable *after* boot, serving its last known
+  snapshot and alerting. The asymmetry is deliberate.
+</Note>
+
+It also refuses a notifier driver that cannot `send` — the required half of a contract is required.
+
+<CardGroup cols={2}>
+  <Card title="Failure handling" icon="triangle-exclamation" href="/engineering/platform/failure-handling">
+    Every failure mode, its symptom, and its handling.
+  </Card>
+  <Card title="Delivery slices" icon="road" href="/engineering/delivery-slices">
+    What ships in what order, and the two prerequisites outside this repository.
+  </Card>
+</CardGroup>

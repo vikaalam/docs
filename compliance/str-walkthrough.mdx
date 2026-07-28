@@ -1,0 +1,146 @@
+---
+title: "A filing, end to end"
+description: "A determination becomes a fact, a clock starts, and a filing is proven filed"
+icon: "scale-balanced"
+mode: "wide"
+---
+
+The fullest compliance scenario in the design: a human determination made *inside* the platform
+becomes a derived fact, a statutory clock starts, a case assembles evidence, drafts a narrative,
+passes quality control under a four-eyes rule, renders a reproducible artifact, files it through the
+single outbound door — **and is not "done" until a receipt comes back.**
+
+## Today, without the platform
+
+- The determination lives in the monitoring tool's own case notes. **Nothing outside that tool knows
+  a clock has started.**
+- The report is built by hand: four systems, a spreadsheet, a narrative pasted into a template, an
+  export.
+- The numbers are whatever those systems returned **that afternoon**. Re-running next year returns
+  different numbers, and nobody can say whether that is a correction or an error.
+- The file is uploaded to the regulator's portal by whoever has the credentials. The proof of filing
+  is **a screenshot in a shared drive**.
+- Quality control is "someone senior looked at it", evidenced by a chat message.
+- If the regulator rejects it, the rejection email lands in **one person's inbox**.
+
+<Warning>
+  The distinctive failure here is not lateness. It is that **"we filed it" is a claim rather than a
+  record** — and a claim does not survive an audit three years later.
+</Warning>
+
+## With the platform
+
+<Steps>
+  <Step title="An analyst makes a determination" icon="user-check">
+    Inside the platform, as the outcome of a review task. The outcome is structured, and it carries
+    the analyst's identity and reason.
+  </Step>
+  <Step title="The determination becomes a derived fact" icon="arrows-turn-right">
+    The workflow publishes a new event — a *derived* one, carrying the causation of the human decision
+    that produced it.
+
+    From here it is indistinguishable from an external fact. **The loop is uniform**, which is why
+    everything downstream works the same way.
+  </Step>
+  <Step title="Three workflows match, and all three run" icon="filter">
+    | Workflow | Does |
+    | --- | --- |
+    | Record the determination | Writes a typed, retained projection — the record-keeping obligation |
+    | Open the case | Starts the multi-step filing process |
+    | Start the clock | Notifies, with the statutory deadline attached |
+
+    Concerns attach to one fact independently. None of the three knows the others exist.
+  </Step>
+  <Step title="The case assembles evidence" icon="folder-open">
+    Automatic steps fetch documents and run screening — through **logical capabilities**, not named
+    vendors.
+  </Step>
+  <Step title="A human drafts the narrative" icon="pen">
+    A task with an owner, a deadline, and a form.
+  </Step>
+  <Step title="A second human performs quality control" icon="user-check">
+    Under a **four-eyes** control: the drafter may not be the approver, the engine enforces it, and an
+    attempt to be both is recorded as a rejected action.
+
+    This replaces "someone senior looked at it, evidenced by a chat message".
+  </Step>
+  <Step title="A reproducible artifact is rendered" icon="file-invoice">
+    From the reporting module's **own projection** of the facts — not by re-reading four systems this
+    afternoon.
+
+    The run carries a period, a watermark, a row count, a checksum, and a duration.
+  </Step>
+  <Step title="It is submitted to a named destination" icon="paper-plane">
+    `regulator-str-filing` — a configured row, not a URL. Through the single outbound door, which is
+    the only component holding credentials.
+  </Step>
+  <Step title="The receipt comes back, and is stored as evidence" icon="receipt">
+    **The run is not done until it does.**
+
+    The receipt itself is stored — not a pointer to the invocation that produced it, because the
+    invocation is retained for months and the filing for years.
+  </Step>
+</Steps>
+
+## The statutory clock
+
+A filing window is a real deadline with a real consequence, and it is modelled as one.
+
+<Warning>
+  **Two related open questions are recorded rather than assumed, and both matter here.**
+
+  **A business-day calendar.** SLAs are stated in calendar durations, but a filing window is counted
+  in **business days in the regulator's jurisdiction**. Nothing in the architecture owns a calendar,
+  and every module that computes a deadline would need the same one.
+
+  **Absolute deadlines.** Timers are relative durations anchored at step entry. A statutory window is
+  anchored to an **external date**. That needs an instance-level deadline with an anchor, an offset,
+  and a calendar.
+
+  Neither is solved. Both are named, because a filing deadline computed in calendar days when the
+  statute says business days is wrong in exactly the direction that matters.
+</Warning>
+
+## What survives afterwards
+
+Three years later, a reviewer can answer every one of these from the platform:
+
+| Question | Answered by |
+| --- | --- |
+| Who made the determination, and when? | The task outcome, and its audit entry |
+| Under what rules was the case run? | The **pinned definition version** |
+| Who drafted, and who approved? | Two task outcomes, two actors — and the four-eyes control that separated them |
+| What data went into the filing? | The run's period, watermark, and row count |
+| Would re-running produce the same file? | The **checksum** |
+| Where was it sent? | The named destination |
+| Did they accept it? | The **stored receipt** |
+| Was anything altered since? | The tamper-evidence seals |
+| Who has read or exported this since? | Audit entries — reads of the record are recorded too |
+
+## What this scenario proves
+
+<CardGroup cols={2}>
+  <Card title="A human decision can start a machine process" icon="arrows-turn-right">
+    The determination re-enters as a derived event, so nothing downstream needs a special path for
+    "this one came from a person".
+  </Card>
+  <Card title="Proof, not flags" icon="file-shield">
+    A checksum, an artifact, and a receipt — replacing a boolean and a screenshot.
+  </Card>
+  <Card title="Quality control is a step, not a courtesy" icon="user-check">
+    Enforced by the engine, with the refusal recorded when someone tries to be both roles.
+  </Card>
+  <Card title="Every module in one flow" icon="cubes">
+    All eight, including reporting and integration — the two that only appear when output leaves the
+    building.
+  </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
+  <Card title="Regulatory reporting in detail" icon="file-invoice" href="/compliance/regulatory-reporting">
+    Runs, definitions, destinations, and at-most-once filing.
+  </Card>
+  <Card title="Control map" icon="table-list" href="/compliance/control-map">
+    Which platform mechanism supports which control.
+  </Card>
+</CardGroup>
